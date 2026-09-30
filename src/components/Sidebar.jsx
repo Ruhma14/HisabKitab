@@ -35,6 +35,18 @@ export default function Sidebar({
       ),
     },
     {
+      id: "suppliers",
+      label: "Suppliers",
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect x="1" y="3" width="15" height="13"></rect>
+          <polygon points="16 8 20 8 23 11 23 16 16 16 16 8"></polygon>
+          <circle cx="5.5" cy="18.5" r="2.5"></circle>
+          <circle cx="18.5" cy="18.5" r="2.5"></circle>
+        </svg>
+      ),
+    },
+    {
       id: "transactions",
       label: "Transactions",
       icon: (
@@ -144,7 +156,8 @@ export default function Sidebar({
               type="button"
               className={`nav-item ${
                 currentPage === item.id ||
-                (item.id === "customers" && currentPage === "customer-details")
+                (item.id === "customers" && currentPage === "customer-details") ||
+                (item.id === "suppliers" && currentPage === "supplier-details")
                   ? "active"
                   : ""
               }`}

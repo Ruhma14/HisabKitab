@@ -4,6 +4,8 @@ import DashboardLayout from "./layouts/DashboardLayout";
 import Dashboard from "./pages/Dashboard";
 import Customers from "./pages/Customers";
 import CustomerDetails from "./pages/CustomerDetails";
+import Suppliers from "./pages/Suppliers";
+import SupplierDetails from "./pages/SupplierDetails";
 import Transactions from "./pages/Transactions";
 import Reports from "./pages/Reports";
 import Login from "./pages/Login";
@@ -16,6 +18,7 @@ import {
   initialShopInfo,
   COUNTRY_CODES,
 } from "./data/dummyData";
+import { initialSuppliers } from "./data/supplierData";
 import {
   getActiveSession,
   clearSession,
@@ -59,6 +62,14 @@ export default function App() {
     }
   });
 
+  const [selectedSupplierId, setSelectedSupplierId] = useState(() => {
+    try {
+      return localStorage.getItem("hisabkitab_selectedSupplierId") || null;
+    } catch {
+      return null;
+    }
+  });
+
   const [shopInfo, setShopInfo] = useState(() => {
     try {
       const saved = localStorage.getItem("hisabkitab_shopInfo");
@@ -85,7 +96,123 @@ export default function App() {
   }, []);
 
   const [customers, setCustomers] = useState(initialCustomers);
+  const [suppliers, setSuppliers] = useState(() => {
+    try {
+      const saved = localStorage.getItem("hisabkitab_suppliers");
+      return saved ? JSON.parse(saved) : initialSuppliers;
+    } catch {
+      return initialSuppliers;
+    }
+  });
   const [transactions, setTransactions] = useState(initialTransactions);
+
+  // Supplier CRUD Operations
+  const handleAddSupplier = (newSupplierData) => {
+    const newSupplier = {
+      ...newSupplierData,
+      id: `s${Date.now()}`,
+      currentBalance: Number(newSupplierData.openingBalance) || 0,
+      status: newSupplierData.status || "Active",
+      createdAt: new Date().toISOString().split("T")[0],
+    };
+
+    setSuppliers((prev) => {
+      const updated = [newSupplier, ...prev];
+      try {
+        localStorage.setItem("hisabkitab_suppliers", JSON.stringify(updated));
+      } catch (err) {
+        console.error("Failed to persist suppliers", err);
+      }
+      return updated;
+    });
+
+    toast.success(`Supplier Added: ${newSupplier.name}`, {
+      description: `Account created with ${shopInfo.currency} ${Number(
+        newSupplier.openingBalance || 0
+      ).toLocaleString()} initial balance.`,
+    });
+  };
+
+  const handleUpdateSupplier = (supplierId, updatedData) => {
+    setSuppliers((prev) => {
+      const updated = prev.map((s) => {
+        if (s.id === supplierId) {
+          const isOpeningBalSameAsCurr =
+            Number(s.currentBalance) === Number(s.openingBalance);
+          return {
+            ...s,
+            ...updatedData,
+            currentBalance: isOpeningBalSameAsCurr
+              ? Number(updatedData.openingBalance) || 0
+              : s.currentBalance,
+          };
+        }
+        return s;
+      });
+      try {
+        localStorage.setItem("hisabkitab_suppliers", JSON.stringify(updated));
+      } catch (err) {
+        console.error("Failed to persist suppliers", err);
+      }
+      return updated;
+    });
+
+    toast.success("Supplier Updated", {
+      description: `${updatedData.name} records saved successfully.`,
+    });
+  };
+
+  const handleDeleteSupplier = (supplierId) => {
+    const target = suppliers.find((s) => s.id === supplierId);
+    setSuppliers((prev) => {
+      const updated = prev.filter((s) => s.id !== supplierId);
+      try {
+        localStorage.setItem("hisabkitab_suppliers", JSON.stringify(updated));
+      } catch (err) {
+        console.error("Failed to persist suppliers", err);
+      }
+      return updated;
+    });
+
+    if (selectedSupplierId === supplierId) {
+      setSelectedSupplierId(null);
+      try {
+        localStorage.removeItem("hisabkitab_selectedSupplierId");
+      } catch (err) {
+        console.error("Failed to remove selected supplier id", err);
+      }
+      handleNavigate("suppliers");
+    }
+
+    toast.info("Supplier Deleted", {
+      description: `Supplier "${target?.name || supplierId}" has been removed from directory.`,
+    });
+  };
+
+  const handleToggleSupplierStatus = (supplierId) => {
+    let nextStatus = "Active";
+    let name = "";
+    setSuppliers((prev) => {
+      const updated = prev.map((s) => {
+        if (s.id === supplierId) {
+          nextStatus = s.status === "Active" ? "Inactive" : "Active";
+          name = s.name;
+          return { ...s, status: nextStatus };
+        }
+        return s;
+      });
+      try {
+        localStorage.setItem("hisabkitab_suppliers", JSON.stringify(updated));
+      } catch (err) {
+        console.error("Failed to persist suppliers", err);
+      }
+      return updated;
+    });
+
+    toast.success(`Supplier Status Updated`, {
+      description: `${name} is now marked as ${nextStatus}.`,
+    });
+  };
 
   // Modal State: Add Transaction
   const [txnModalOpen, setTxnModalOpen] = useState(false);
@@ -147,6 +274,17 @@ export default function App() {
       } else {
         setSelectedCustomerId(null);
         localStorage.removeItem("hisabkitab_selectedCustomerId");
+      }
+
+      if (page === "supplier-details") {
+        const id = typeof targetOrFilter === "string" ? targetOrFilter : targetOrFilter?.id;
+        if (id) {
+          setSelectedSupplierId(id);
+          localStorage.setItem("hisabkitab_selectedSupplierId", id);
+        }
+      } else {
+        setSelectedSupplierId(null);
+        localStorage.removeItem("hisabkitab_selectedSupplierId");
       }
     } catch (err) {
       console.error("Failed to persist current page", err);
@@ -366,6 +504,7 @@ export default function App() {
     try {
       localStorage.removeItem("hisabkitab_currentPage");
       localStorage.removeItem("hisabkitab_selectedCustomerId");
+      localStorage.removeItem("hisabkitab_selectedSupplierId");
     } catch (err) {
       console.error("Failed to clear navigation persistence", err);
     }
@@ -396,6 +535,12 @@ export default function App() {
     "customer-details": {
       title: "Customer Khata Ledger",
     },
+    suppliers: {
+      title: "Suppliers Directory",
+    },
+    "supplier-details": {
+      title: "Supplier Details & Info",
+    },
     transactions: {
       title: "Transaction Ledger",
     },
@@ -409,6 +554,7 @@ export default function App() {
 
   const currentHeaderInfo = pageTitles[currentPage] || pageTitles.dashboard;
   const activeCustomer = customers.find((c) => c.id === selectedCustomerId);
+  const activeSupplier = suppliers.find((s) => s.id === selectedSupplierId);
 
   return (
     <>
@@ -452,6 +598,29 @@ export default function App() {
             onOpenAddTransaction={handleOpenAddTransaction}
             currency={shopInfo.currency}
             shopInfo={shopInfo}
+          />
+        )}
+
+        {currentPage === "suppliers" && (
+          <Suppliers
+            suppliers={suppliers}
+            onSelectSupplier={(id) => handleNavigate("supplier-details", id)}
+            onAddSupplier={handleAddSupplier}
+            onUpdateSupplier={handleUpdateSupplier}
+            onDeleteSupplier={handleDeleteSupplier}
+            onToggleSupplierStatus={handleToggleSupplierStatus}
+            currency={shopInfo.currency}
+          />
+        )}
+
+        {currentPage === "supplier-details" && (
+          <SupplierDetails
+            supplier={activeSupplier}
+            onBack={() => handleNavigate("suppliers")}
+            onUpdateSupplier={handleUpdateSupplier}
+            onDeleteSupplier={handleDeleteSupplier}
+            onToggleSupplierStatus={handleToggleSupplierStatus}
+            currency={shopInfo.currency}
           />
         )}
 

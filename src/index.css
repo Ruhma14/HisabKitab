@@ -1143,6 +1143,29 @@ button, input, select, textarea {
   box-shadow: 0 0 4px rgba(22, 163, 74, 0.4);
 }
 
+.badge-inactive {
+  background-color: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
+}
+
+.badge-inactive .badge-dot {
+  background-color: #94a3b8;
+  box-shadow: none;
+}
+
+.status-active {
+  background-color: var(--success-light);
+  color: var(--success);
+  border: 1px solid #bbf7d0;
+}
+
+.status-inactive {
+  background-color: #f1f5f9;
+  color: #64748b;
+  border: 1px solid #cbd5e1;
+}
+
 .empty-check-icon {
   color: var(--success);
   display: flex;
