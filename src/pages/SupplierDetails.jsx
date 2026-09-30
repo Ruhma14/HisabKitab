@@ -1,18 +1,44 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Button from "../components/Button";
+import Table from "../components/Table";
 import SupplierModal from "../components/SupplierModal";
 import SupplierConfirmModal from "../components/SupplierConfirmModal";
+import RecordPurchaseModal from "../components/RecordPurchaseModal";
+import MakePaymentModal from "../components/MakePaymentModal";
+
+// Compute running balance from sorted transactions
+function computeLedger(txns) {
+  const sorted = [...txns].sort((a, b) => new Date(a.date) - new Date(b.date));
+  let balance = 0;
+  return sorted.map((t) => {
+    balance += Number(t.debit || 0) - Number(t.credit || 0);
+    return { ...t, runningBalance: balance };
+  }).reverse(); // most recent first
+}
+
+const PAYMENT_STATUS_COLORS = {
+  "Paid": { bg: "var(--success-light)", color: "var(--success)", border: "#bbf7d0" },
+  "Partially Paid": { bg: "var(--warning-light)", color: "var(--warning)", border: "#fde68a" },
+  "Unpaid": { bg: "var(--danger-light)", color: "var(--danger)", border: "#fecaca" },
+};
 
 export default function SupplierDetails({
   supplier,
+  suppliers = [],
+  supplierTransactions = [],
   onBack,
   onUpdateSupplier,
   onDeleteSupplier,
   onToggleSupplierStatus,
+  onRecordPurchase,
+  onMakePayment,
   currency = "Rs.",
 }) {
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [confirmModalOpen, setConfirmModalOpen] = useState(false);
+  const [purchaseModalOpen, setPurchaseModalOpen] = useState(false);
+  const [paymentModalOpen, setPaymentModalOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState("ledger"); // "ledger" | "purchases" | "payments"
 
   if (!supplier) {
     return (
@@ -31,6 +57,26 @@ export default function SupplierDetails({
   const isActive = supplier.status === "Active";
   const openBal = Number(supplier.openingBalance) || 0;
   const currBal = Number(supplier.currentBalance) || 0;
+  const totalPurchases = Number(supplier.totalPurchases) || 0;
+  const totalPaid = Number(supplier.totalPaid) || 0;
+
+  // Filter transactions for this supplier
+  const myTxns = useMemo(
+    () => supplierTransactions.filter((t) => t.supplierId === supplier.id),
+    [supplierTransactions, supplier.id]
+  );
+
+  const ledgerWithRunning = useMemo(() => computeLedger(myTxns), [myTxns]);
+
+  const purchaseTxns = useMemo(
+    () => myTxns.filter((t) => t.type === "Purchase").sort((a, b) => new Date(b.date) - new Date(a.date)),
+    [myTxns]
+  );
+
+  const paymentTxns = useMemo(
+    () => myTxns.filter((t) => t.type === "Payment").sort((a, b) => new Date(b.date) - new Date(a.date)),
+    [myTxns]
+  );
 
   const handleSaveEdit = (updatedData) => {
     onUpdateSupplier(supplier.id, updatedData);
@@ -40,6 +86,268 @@ export default function SupplierDetails({
   const handleConfirmDelete = (id) => {
     onDeleteSupplier(id);
     onBack();
+  };
+
+  // Ledger columns
+  const ledgerColumns = [
+    {
+      header: "Date",
+      key: "date",
+      render: (row) => <span className="date-cell">{row.date}</span>,
+    },
+    {
+      header: "Type",
+      key: "type",
+      render: (row) => {
+        const typeColors = {
+          "Opening Balance": { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
+          "Purchase": { bg: "var(--danger-light)", color: "var(--danger)", border: "#fecaca" },
+          "Payment": { bg: "var(--success-light)", color: "var(--success)", border: "#bbf7d0" },
+        };
+        const c = typeColors[row.type] || { bg: "#f1f5f9", color: "#64748b", border: "#cbd5e1" };
+        return (
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "5px",
+              padding: "3px 9px",
+              borderRadius: "999px",
+              fontSize: "11px",
+              fontWeight: "600",
+              background: c.bg,
+              color: c.color,
+              border: `1px solid ${c.border}`,
+              whiteSpace: "nowrap",
+            }}
+          >
+            <span
+              style={{
+                width: "5px",
+                height: "5px",
+                borderRadius: "50%",
+                background: c.color,
+                display: "inline-block",
+                flexShrink: 0,
+              }}
+            />
+            {row.type}
+          </span>
+        );
+      },
+    },
+    {
+      header: "Reference",
+      key: "reference",
+      render: (row) => (
+        <span style={{ fontSize: "12px", fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>
+          {row.reference}
+        </span>
+      ),
+    },
+    {
+      header: "Description",
+      key: "description",
+      render: (row) => (
+        <div>
+          <span className="customer-name-bold" style={{ fontWeight: "500", fontSize: "13px" }}>{row.description}</span>
+          {row.notes && (
+            <span className="customer-meta-sub">{row.notes}</span>
+          )}
+        </div>
+      ),
+    },
+    {
+      header: "Debit",
+      key: "debit",
+      align: "right",
+      render: (row) =>
+        Number(row.debit) > 0 ? (
+          <span className="amount-cell text-danger">
+            {currency} {Number(row.debit).toLocaleString()}
+          </span>
+        ) : (
+          <span style={{ color: "var(--text-light)", fontSize: "13px" }}>—</span>
+        ),
+    },
+    {
+      header: "Credit",
+      key: "credit",
+      align: "right",
+      render: (row) =>
+        Number(row.credit) > 0 ? (
+          <span className="amount-cell text-success">
+            {currency} {Number(row.credit).toLocaleString()}
+          </span>
+        ) : (
+          <span style={{ color: "var(--text-light)", fontSize: "13px" }}>—</span>
+        ),
+    },
+    {
+      header: "Balance",
+      key: "runningBalance",
+      align: "right",
+      render: (row) => (
+        <span
+          style={{
+            fontWeight: "700",
+            fontSize: "14px",
+            color: row.runningBalance > 0 ? "var(--danger)" : "var(--success)",
+          }}
+        >
+          {currency} {Number(row.runningBalance).toLocaleString()}
+        </span>
+      ),
+    },
+  ];
+
+  // Purchase columns
+  const purchaseColumns = [
+    {
+      header: "Date",
+      key: "date",
+      render: (row) => <span className="date-cell">{row.date}</span>,
+    },
+    {
+      header: "Reference",
+      key: "reference",
+      render: (row) => (
+        <span style={{ fontSize: "12px", fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>
+          {row.reference}
+        </span>
+      ),
+    },
+    {
+      header: "Item",
+      key: "item",
+      render: (row) => (
+        <div>
+          <span className="customer-name-bold" style={{ fontWeight: "500" }}>{row.item || row.description}</span>
+          {row.quantity && (
+            <span className="customer-meta-sub">
+              Qty: {row.quantity} × {currency} {Number(row.purchasePrice).toLocaleString()}
+            </span>
+          )}
+        </div>
+      ),
+    },
+    {
+      header: "Total",
+      key: "totalAmount",
+      align: "right",
+      render: (row) => (
+        <span className="font-semibold">
+          {currency} {Number(row.totalAmount || row.debit).toLocaleString()}
+        </span>
+      ),
+    },
+    {
+      header: "Paid",
+      key: "amountPaid",
+      align: "right",
+      render: (row) => (
+        <span className="text-success font-medium">
+          {currency} {Number(row.amountPaid || 0).toLocaleString()}
+        </span>
+      ),
+    },
+    {
+      header: "Remaining",
+      key: "remainingAmount",
+      align: "right",
+      render: (row) => (
+        <span className={Number(row.remainingAmount) > 0 ? "text-danger font-medium" : "text-success font-medium"}>
+          {currency} {Number(row.remainingAmount || 0).toLocaleString()}
+        </span>
+      ),
+    },
+    {
+      header: "Status",
+      key: "paymentStatus",
+      align: "center",
+      render: (row) => {
+        const c = PAYMENT_STATUS_COLORS[row.paymentStatus] || PAYMENT_STATUS_COLORS["Unpaid"];
+        return (
+          <span
+            style={{
+              display: "inline-block",
+              padding: "3px 10px",
+              borderRadius: "999px",
+              fontSize: "11px",
+              fontWeight: "600",
+              background: c.bg,
+              color: c.color,
+              border: `1px solid ${c.border}`,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {row.paymentStatus}
+          </span>
+        );
+      },
+    },
+  ];
+
+  // Payment columns
+  const paymentColumns = [
+    {
+      header: "Date",
+      key: "date",
+      render: (row) => <span className="date-cell">{row.date}</span>,
+    },
+    {
+      header: "Reference",
+      key: "reference",
+      render: (row) => (
+        <span style={{ fontSize: "12px", fontFamily: "var(--font-mono)", color: "var(--text-muted)" }}>
+          {row.reference}
+        </span>
+      ),
+    },
+    {
+      header: "Method",
+      key: "paymentMethod",
+      render: (row) => (
+        <span
+          style={{
+            fontSize: "12px",
+            background: "var(--border-light)",
+            color: "var(--text-main)",
+            padding: "3px 8px",
+            borderRadius: "var(--radius-sm)",
+            border: "1px solid var(--border-color)",
+          }}
+        >
+          {row.paymentMethod || "—"}
+        </span>
+      ),
+    },
+    {
+      header: "Description",
+      key: "description",
+      render: (row) => (
+        <div>
+          <span className="customer-name-bold" style={{ fontWeight: "500" }}>{row.description}</span>
+          {row.notes && <span className="customer-meta-sub">{row.notes}</span>}
+        </div>
+      ),
+    },
+    {
+      header: "Amount",
+      key: "credit",
+      align: "right",
+      render: (row) => (
+        <span className="amount-cell text-success">
+          + {currency} {Number(row.credit).toLocaleString()}
+        </span>
+      ),
+    },
+  ];
+
+  const tabCounts = {
+    ledger: myTxns.length,
+    purchases: purchaseTxns.length,
+    payments: paymentTxns.length,
   };
 
   return (
@@ -64,9 +372,7 @@ export default function SupplierDetails({
               <div className="customer-name-heading">
                 <h2>{supplier.name}</h2>
                 <span
-                  className={`status-pill ${
-                    isActive ? "status-cleared" : "status-due"
-                  }`}
+                  className={`status-pill ${isActive ? "status-cleared" : "status-due"}`}
                   style={
                     !isActive
                       ? { background: "#f1f5f9", color: "#64748b", borderColor: "#cbd5e1" }
@@ -78,52 +384,23 @@ export default function SupplierDetails({
               </div>
               <p className="profile-contact-line">
                 <span className="contact-item">
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"></path>
                   </svg>
                   {supplier.phone}
                 </span>
-
                 {supplier.email && (
                   <span className="contact-item">
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"></path>
                       <polyline points="22,6 12,13 2,6"></polyline>
                     </svg>
                     {supplier.email}
                   </span>
                 )}
-
                 {supplier.address && (
                   <span className="contact-item">
-                    <svg
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="2"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"></path>
                       <circle cx="12" cy="10" r="3"></circle>
                     </svg>
@@ -136,6 +413,22 @@ export default function SupplierDetails({
 
           <div className="customer-action-buttons">
             <Button
+              variant="primary"
+              size="md"
+              icon="+"
+              onClick={() => setPurchaseModalOpen(true)}
+            >
+              Record Purchase
+            </Button>
+            <Button
+              variant="success"
+              size="md"
+              icon="+"
+              onClick={() => setPaymentModalOpen(true)}
+            >
+              Make Payment
+            </Button>
+            <Button
               variant="outline"
               size="md"
               icon={
@@ -146,9 +439,8 @@ export default function SupplierDetails({
               }
               onClick={() => setEditModalOpen(true)}
             >
-              Edit Supplier
+              Edit
             </Button>
-
             <Button
               variant="secondary"
               size="md"
@@ -160,162 +452,107 @@ export default function SupplierDetails({
         </div>
 
         {/* Financial Highlights Strip */}
-        <div className="customer-financial-strip">
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(5, 1fr)",
+            alignItems: "center",
+            background: "#f8fafc",
+            border: "1px solid var(--border-color)",
+            borderRadius: "var(--radius-md)",
+            padding: "16px 20px",
+            gap: "0",
+          }}
+        >
           <div className="financial-cell">
             <span className="financial-label">Opening Balance</span>
             <span className="financial-val font-semibold text-dark">
               {currency} {openBal.toLocaleString()}
             </span>
           </div>
-
           <div className="financial-divider"></div>
-
           <div className="financial-cell">
-            <span className="financial-label">Current Payable Balance</span>
-            <span
-              className={`financial-val ${
-                currBal > 0 ? "text-danger font-bold" : "text-success font-bold"
-              }`}
-            >
-              {currency} {currBal.toLocaleString()}
+            <span className="financial-label">Total Purchases</span>
+            <span className="financial-val text-danger font-bold">
+              {currency} {totalPurchases.toLocaleString()}
             </span>
           </div>
-
           <div className="financial-divider"></div>
-
           <div className="financial-cell">
-            <span className="financial-label">Operational Status</span>
+            <span className="financial-label">Total Paid</span>
+            <span className="financial-val text-success font-bold">
+              {currency} {totalPaid.toLocaleString()}
+            </span>
+          </div>
+          <div className="financial-divider" style={{ gridColumn: "unset" }}></div>
+          <div className="financial-cell" style={{ gridColumn: "span 2" }}>
+            <span className="financial-label">Outstanding Balance</span>
             <span
-              className={`financial-val ${
-                isActive ? "text-success font-semibold" : "text-muted font-semibold"
-              }`}
+              className={`financial-val ${currBal > 0 ? "text-danger font-bold" : "text-success font-bold"}`}
             >
-              {isActive ? "Active Partner" : "Inactive / On-Hold"}
+              {currency} {currBal.toLocaleString()}
             </span>
           </div>
         </div>
       </div>
 
-      {/* Supplier Profile & Notes Details Card */}
+      {/* Profile Info & Notes */}
       <div className="dashboard-card" style={{ padding: "24px", marginBottom: "24px" }}>
-        <div className="card-header-flex" style={{ marginBottom: "18px" }}>
+        <div className="card-header-flex" style={{ marginBottom: "16px" }}>
           <div>
             <h2 className="card-heading">Supplier Profile & Information</h2>
-            <p className="card-subheading">
-              Complete contact and business records for this supplier
-            </p>
+            <p className="card-subheading">Contact details and notes</p>
           </div>
           <span className="tag-count">ID: {supplier.id}</span>
         </div>
-
         <div
           style={{
             display: "grid",
-            gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))",
-            gap: "20px",
-            marginBottom: "24px",
+            gridTemplateColumns: "repeat(auto-fit, minmax(240px, 1fr))",
+            gap: "16px",
+            marginBottom: "20px",
           }}
         >
-          <div
-            style={{
-              padding: "16px",
-              background: "#f8fafc",
-              borderRadius: "8px",
-              border: "1px solid var(--border-color)",
-            }}
-          >
-            <span style={{ fontSize: "12px", color: "var(--text-muted)", display: "block", marginBottom: "4px" }}>
-              Supplier Name
-            </span>
-            <span style={{ fontSize: "15px", fontWeight: "600", color: "var(--text-main)" }}>
-              {supplier.name}
-            </span>
-          </div>
-
-          <div
-            style={{
-              padding: "16px",
-              background: "#f8fafc",
-              borderRadius: "8px",
-              border: "1px solid var(--border-color)",
-            }}
-          >
-            <span style={{ fontSize: "12px", color: "var(--text-muted)", display: "block", marginBottom: "4px" }}>
-              Phone Number
-            </span>
-            <span style={{ fontSize: "15px", fontWeight: "600", color: "var(--text-main)", fontFamily: "var(--font-mono)" }}>
-              {supplier.phone}
-            </span>
-          </div>
-
-          <div
-            style={{
-              padding: "16px",
-              background: "#f8fafc",
-              borderRadius: "8px",
-              border: "1px solid var(--border-color)",
-            }}
-          >
-            <span style={{ fontSize: "12px", color: "var(--text-muted)", display: "block", marginBottom: "4px" }}>
-              Email Address
-            </span>
-            <span style={{ fontSize: "15px", fontWeight: "600", color: "var(--text-main)" }}>
-              {supplier.email || "No email registered"}
-            </span>
-          </div>
-
-          <div
-            style={{
-              padding: "16px",
-              background: "#f8fafc",
-              borderRadius: "8px",
-              border: "1px solid var(--border-color)",
-            }}
-          >
-            <span style={{ fontSize: "12px", color: "var(--text-muted)", display: "block", marginBottom: "4px" }}>
-              Business / Market Address
-            </span>
-            <span style={{ fontSize: "15px", fontWeight: "600", color: "var(--text-main)" }}>
-              {supplier.address || "No address provided"}
-            </span>
-          </div>
-        </div>
-
-        {/* Notes Section */}
-        <div style={{ marginTop: "12px" }}>
-          <h4
-            style={{
-              fontSize: "14px",
-              fontWeight: "600",
-              color: "var(--text-main)",
-              marginBottom: "10px",
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-            }}
-          >
-            <svg
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+          {[
+            { label: "Supplier Name", value: supplier.name },
+            { label: "Phone Number", value: supplier.phone, mono: true },
+            { label: "Email Address", value: supplier.email || "No email registered" },
+            { label: "Address", value: supplier.address || "No address provided" },
+          ].map(({ label, value, mono }) => (
+            <div
+              key={label}
+              style={{
+                padding: "14px 16px",
+                background: "#f8fafc",
+                borderRadius: "8px",
+                border: "1px solid var(--border-color)",
+              }}
             >
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-              <polyline points="14 2 14 8 20 8"></polyline>
-              <line x1="16" y1="13" x2="8" y2="13"></line>
-              <line x1="16" y1="17" x2="8" y2="17"></line>
-              <polyline points="10 9 9 9 8 9"></polyline>
-            </svg>
+              <span style={{ fontSize: "12px", color: "var(--text-muted)", display: "block", marginBottom: "4px" }}>
+                {label}
+              </span>
+              <span
+                style={{
+                  fontSize: "14px",
+                  fontWeight: "600",
+                  color: "var(--text-main)",
+                  fontFamily: mono ? "var(--font-mono)" : "inherit",
+                }}
+              >
+                {value}
+              </span>
+            </div>
+          ))}
+        </div>
+        {/* Notes */}
+        <div>
+          <h4 style={{ fontSize: "13px", fontWeight: "600", color: "var(--text-main)", marginBottom: "8px" }}>
             Supplier Notes & Terms
           </h4>
           <div
             style={{
-              padding: "14px 18px",
-              background: "#ffffff",
+              padding: "13px 16px",
+              background: "#fff",
               border: "1px solid #e2e8f0",
               borderLeft: "4px solid var(--primary)",
               borderRadius: "6px",
@@ -325,46 +562,100 @@ export default function SupplierDetails({
               fontStyle: supplier.notes ? "normal" : "italic",
             }}
           >
-            {supplier.notes || "No special notes or payment terms recorded for this supplier."}
+            {supplier.notes || "No special notes or payment terms recorded."}
           </div>
         </div>
       </div>
 
-      {/* Future Purchases & Ledger Notice */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "12px",
-          padding: "16px 20px",
-          background: "#eff6ff",
-          border: "1px solid #bfdbfe",
-          borderRadius: "10px",
-          color: "#1e40af",
-          fontSize: "13px",
-        }}
-      >
-        <svg
-          width="20"
-          height="20"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          style={{ flexShrink: 0 }}
+      {/* Ledger / Transaction History */}
+      <div className="dashboard-card no-padding">
+        {/* Tab Header */}
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "18px 24px 0 24px",
+            borderBottom: "1px solid var(--border-color)",
+            flexWrap: "wrap",
+            gap: "12px",
+          }}
         >
-          <circle cx="12" cy="12" r="10"></circle>
-          <line x1="12" y1="16" x2="12" y2="12"></line>
-          <line x1="12" y1="8" x2="12.01" y2="8"></line>
-        </svg>
-        <span>
-          <strong>Note:</strong> Supplier Purchases, Bills, Payments, and Statement Ledger modules will be integrated in upcoming updates.
-        </span>
+          <div>
+            <h2 className="card-heading">Supplier Ledger</h2>
+            <p className="card-subheading">Complete transaction history and running balance</p>
+          </div>
+          <div className="filter-pill-group" style={{ marginBottom: "0" }}>
+            {[
+              { key: "ledger", label: "Full Ledger" },
+              { key: "purchases", label: "Purchases" },
+              { key: "payments", label: "Payments" },
+            ].map(({ key, label }) => (
+              <button
+                key={key}
+                type="button"
+                className={`filter-pill ${activeTab === key ? "active" : ""}`}
+                onClick={() => setActiveTab(key)}
+              >
+                {label} ({tabCounts[key]})
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Tab Content */}
+        {activeTab === "ledger" && (
+          <Table
+            columns={ledgerColumns}
+            data={ledgerWithRunning}
+            keyField="id"
+            emptyMessage="No transactions recorded for this supplier yet."
+          />
+        )}
+        {activeTab === "purchases" && (
+          <Table
+            columns={purchaseColumns}
+            data={purchaseTxns}
+            keyField="id"
+            emptyMessage="No purchase records found. Click 'Record Purchase' to add one."
+          />
+        )}
+        {activeTab === "payments" && (
+          <Table
+            columns={paymentColumns}
+            data={paymentTxns}
+            keyField="id"
+            emptyMessage="No payment records found. Click 'Make Payment' to record one."
+          />
+        )}
       </div>
 
-      {/* Edit Modal */}
+      {/* Modals */}
+      <RecordPurchaseModal
+        isOpen={purchaseModalOpen}
+        onClose={() => setPurchaseModalOpen(false)}
+        onSave={(txn, meta) => {
+          onRecordPurchase(txn, meta);
+          setPurchaseModalOpen(false);
+        }}
+        suppliers={suppliers.length > 0 ? suppliers : [supplier]}
+        defaultSupplierId={supplier.id}
+        currency={currency}
+      />
+
+      <MakePaymentModal
+        isOpen={paymentModalOpen}
+        onClose={() => setPaymentModalOpen(false)}
+        onSave={(txn, meta) => {
+          onMakePayment(txn, meta);
+          setPaymentModalOpen(false);
+        }}
+        suppliers={suppliers.length > 0 ? suppliers : [supplier]}
+        supplierTransactions={supplierTransactions}
+        defaultSupplierId={supplier.id}
+        currency={currency}
+      />
+
       <SupplierModal
         isOpen={editModalOpen}
         onClose={() => setEditModalOpen(false)}
@@ -373,7 +664,6 @@ export default function SupplierDetails({
         currency={currency}
       />
 
-      {/* Delete / Deactivate Confirmation Modal */}
       <SupplierConfirmModal
         isOpen={confirmModalOpen}
         onClose={() => setConfirmModalOpen(false)}

@@ -18,7 +18,7 @@ import {
   initialShopInfo,
   COUNTRY_CODES,
 } from "./data/dummyData";
-import { initialSuppliers } from "./data/supplierData";
+import { initialSuppliers, initialSupplierTransactions } from "./data/supplierData";
 import {
   getActiveSession,
   clearSession,
@@ -104,32 +104,85 @@ export default function App() {
       return initialSuppliers;
     }
   });
+  const [supplierTransactions, setSupplierTransactions] = useState(() => {
+    try {
+      const saved = localStorage.getItem("hisabkitab_supplierTxns");
+      return saved ? JSON.parse(saved) : initialSupplierTransactions;
+    } catch {
+      return initialSupplierTransactions;
+    }
+  });
   const [transactions, setTransactions] = useState(initialTransactions);
+
+  // Helper: persist supplier txns
+  const persistSupplierTxns = (updated) => {
+    try {
+      localStorage.setItem("hisabkitab_supplierTxns", JSON.stringify(updated));
+    } catch (err) {
+      console.error("Failed to persist supplier transactions", err);
+    }
+  };
+
+  // Helper: persist suppliers
+  const persistSuppliers = (updated) => {
+    try {
+      localStorage.setItem("hisabkitab_suppliers", JSON.stringify(updated));
+    } catch (err) {
+      console.error("Failed to persist suppliers", err);
+    }
+  };
 
   // Supplier CRUD Operations
   const handleAddSupplier = (newSupplierData) => {
+    const openBal = Number(newSupplierData.openingBalance) || 0;
+    const newId = `s${Date.now()}`;
     const newSupplier = {
       ...newSupplierData,
-      id: `s${Date.now()}`,
-      currentBalance: Number(newSupplierData.openingBalance) || 0,
+      id: newId,
+      currentBalance: openBal,
+      totalPurchases: openBal,
+      totalPaid: 0,
       status: newSupplierData.status || "Active",
       createdAt: new Date().toISOString().split("T")[0],
     };
 
     setSuppliers((prev) => {
       const updated = [newSupplier, ...prev];
-      try {
-        localStorage.setItem("hisabkitab_suppliers", JSON.stringify(updated));
-      } catch (err) {
-        console.error("Failed to persist suppliers", err);
-      }
+      persistSuppliers(updated);
       return updated;
     });
 
+    // If opening balance > 0, add an opening balance transaction
+    if (openBal > 0) {
+      const openTxn = {
+        id: `st-${Date.now()}`,
+        supplierId: newId,
+        supplierName: newSupplier.name,
+        type: "Opening Balance",
+        date: new Date().toISOString().split("T")[0],
+        reference: `OB-${newId.toUpperCase()}`,
+        description: "Opening payable balance brought forward",
+        debit: openBal,
+        credit: 0,
+        paymentMethod: null,
+        item: null,
+        quantity: null,
+        purchasePrice: null,
+        totalAmount: null,
+        amountPaid: null,
+        remainingAmount: null,
+        paymentStatus: null,
+        notes: "Initial balance",
+      };
+      setSupplierTransactions((prev) => {
+        const updated = [openTxn, ...prev];
+        persistSupplierTxns(updated);
+        return updated;
+      });
+    }
+
     toast.success(`Supplier Added: ${newSupplier.name}`, {
-      description: `Account created with ${shopInfo.currency} ${Number(
-        newSupplier.openingBalance || 0
-      ).toLocaleString()} initial balance.`,
+      description: `Account created with ${shopInfo.currency} ${openBal.toLocaleString()} initial balance.`,
     });
   };
 
@@ -149,11 +202,7 @@ export default function App() {
         }
         return s;
       });
-      try {
-        localStorage.setItem("hisabkitab_suppliers", JSON.stringify(updated));
-      } catch (err) {
-        console.error("Failed to persist suppliers", err);
-      }
+      persistSuppliers(updated);
       return updated;
     });
 
@@ -166,11 +215,13 @@ export default function App() {
     const target = suppliers.find((s) => s.id === supplierId);
     setSuppliers((prev) => {
       const updated = prev.filter((s) => s.id !== supplierId);
-      try {
-        localStorage.setItem("hisabkitab_suppliers", JSON.stringify(updated));
-      } catch (err) {
-        console.error("Failed to persist suppliers", err);
-      }
+      persistSuppliers(updated);
+      return updated;
+    });
+    // Also delete their transactions
+    setSupplierTransactions((prev) => {
+      const updated = prev.filter((t) => t.supplierId !== supplierId);
+      persistSupplierTxns(updated);
       return updated;
     });
 
@@ -201,16 +252,80 @@ export default function App() {
         }
         return s;
       });
-      try {
-        localStorage.setItem("hisabkitab_suppliers", JSON.stringify(updated));
-      } catch (err) {
-        console.error("Failed to persist suppliers", err);
-      }
+      persistSuppliers(updated);
       return updated;
     });
 
     toast.success(`Supplier Status Updated`, {
       description: `${name} is now marked as ${nextStatus}.`,
+    });
+  };
+
+  // Record a Purchase
+  const handleRecordPurchase = (purchaseTxn, meta) => {
+    // Add the transaction
+    setSupplierTransactions((prev) => {
+      const updated = [purchaseTxn, ...prev];
+      persistSupplierTxns(updated);
+      return updated;
+    });
+
+    // Update supplier: currentBalance += (totalAmount - amountPaid), totalPurchases += totalAmount, totalPaid += amountPaid
+    setSuppliers((prev) => {
+      const updated = prev.map((s) => {
+        if (s.id === meta.supplierId) {
+          const newTotal = (Number(s.totalPurchases) || 0) + Number(meta.totalAmount);
+          const newPaid = (Number(s.totalPaid) || 0) + Number(meta.amountPaid);
+          const newBalance = (Number(s.currentBalance) || 0) + Number(meta.remaining);
+          return {
+            ...s,
+            totalPurchases: newTotal,
+            totalPaid: newPaid,
+            currentBalance: newBalance,
+          };
+        }
+        return s;
+      });
+      persistSuppliers(updated);
+      return updated;
+    });
+
+    const supplier = suppliers.find((s) => s.id === meta.supplierId);
+    toast.success(`Purchase Recorded: ${shopInfo.currency} ${Number(meta.totalAmount).toLocaleString()}`, {
+      description: `For ${supplier?.name || "Supplier"}. Remaining: ${shopInfo.currency} ${Number(meta.remaining).toLocaleString()}`,
+    });
+  };
+
+  // Make a Payment to Supplier
+  const handleMakePayment = (paymentTxn, meta) => {
+    // Add the transaction
+    setSupplierTransactions((prev) => {
+      const updated = [paymentTxn, ...prev];
+      persistSupplierTxns(updated);
+      return updated;
+    });
+
+    // Update supplier: currentBalance -= amountPaid, totalPaid += amountPaid
+    setSuppliers((prev) => {
+      const updated = prev.map((s) => {
+        if (s.id === meta.supplierId) {
+          const newPaid = (Number(s.totalPaid) || 0) + Number(meta.amountPaid);
+          const newBalance = Math.max(0, (Number(s.currentBalance) || 0) - Number(meta.amountPaid));
+          return {
+            ...s,
+            totalPaid: newPaid,
+            currentBalance: newBalance,
+          };
+        }
+        return s;
+      });
+      persistSuppliers(updated);
+      return updated;
+    });
+
+    const supplier = suppliers.find((s) => s.id === meta.supplierId);
+    toast.success(`Payment Recorded: ${shopInfo.currency} ${Number(meta.amountPaid).toLocaleString()}`, {
+      description: `Payment sent to ${supplier?.name || "Supplier"} successfully.`,
     });
   };
 
@@ -616,10 +731,14 @@ export default function App() {
         {currentPage === "supplier-details" && (
           <SupplierDetails
             supplier={activeSupplier}
+            suppliers={suppliers}
+            supplierTransactions={supplierTransactions}
             onBack={() => handleNavigate("suppliers")}
             onUpdateSupplier={handleUpdateSupplier}
             onDeleteSupplier={handleDeleteSupplier}
             onToggleSupplierStatus={handleToggleSupplierStatus}
+            onRecordPurchase={handleRecordPurchase}
+            onMakePayment={handleMakePayment}
             currency={shopInfo.currency}
           />
         )}
