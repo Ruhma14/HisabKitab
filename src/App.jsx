@@ -687,6 +687,8 @@ export default function App() {
           <Dashboard
             customers={customers}
             transactions={transactions}
+            suppliers={suppliers}
+            supplierTransactions={supplierTransactions}
             onNavigate={handleNavigate}
             onOpenAddTransaction={handleOpenAddTransaction}
             onOpenAddCustomer={handleOpenAddCustomer}
@@ -747,8 +749,11 @@ export default function App() {
           <Transactions
             transactions={transactions}
             customers={customers}
+            suppliers={suppliers}
+            supplierTransactions={supplierTransactions}
             shopInfo={shopInfo}
             onSelectCustomer={(id) => handleNavigate("customer-details", id)}
+            onSelectSupplier={(id) => handleNavigate("supplier-details", id)}
             onOpenAddTransaction={handleOpenAddTransaction}
             currency={shopInfo.currency}
             initialTypeFilter={activeTxnFilter}
@@ -759,9 +764,12 @@ export default function App() {
           <Reports
             customers={customers}
             transactions={transactions}
+            suppliers={suppliers}
+            supplierTransactions={supplierTransactions}
             currency={shopInfo.currency}
             shopInfo={shopInfo}
             onSelectCustomer={(id) => handleNavigate("customer-details", id)}
+            onSelectSupplier={(id) => handleNavigate("supplier-details", id)}
           />
         )}
 

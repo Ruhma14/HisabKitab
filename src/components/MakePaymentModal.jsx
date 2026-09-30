@@ -3,7 +3,7 @@ import { toast } from "sonner";
 import Modal from "./Modal";
 import Button from "./Button";
 
-function PaymentForm({ suppliers, defaultSupplierId, supplierTransactions, onClose, onSave, currency }) {
+function PaymentForm({ suppliers, defaultSupplierId, onClose, onSave, currency }) {
   const today = new Date().toISOString().split("T")[0];
 
   const [form, setForm] = useState({

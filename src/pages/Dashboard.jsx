@@ -5,12 +5,14 @@ import Button from "../components/Button";
 export default function Dashboard({
   customers = [],
   transactions = [],
+  suppliers = [],
+  supplierTransactions = [],
   onNavigate,
   onOpenAddTransaction,
   onOpenAddCustomer,
   currency = "Rs.",
 }) {
-  // Compute totals
+  // ── Customer Statistics ──────────────────────────────────────────────────
   const totalUdhaar = transactions
     .filter((t) => t.type === "Udhaar")
     .reduce((sum, t) => sum + Number(t.amount || 0), 0);
@@ -21,7 +23,7 @@ export default function Dashboard({
 
   const netBalance = totalUdhaar - totalJama;
 
-  // Recent 5 transactions
+  // Recent 5 customer transactions
   const recentTransactions = [...transactions].slice(0, 5);
 
   // Top customers by balance
@@ -30,7 +32,37 @@ export default function Dashboard({
     .sort((a, b) => (b.balance || 0) - (a.balance || 0))
     .slice(0, 4);
 
-  const columns = [
+  // ── Supplier Statistics ───────────────────────────────────────────────────
+  const totalSuppliers = suppliers.length;
+
+  const totalPurchases = suppliers.reduce(
+    (sum, s) => sum + (Number(s.totalPurchases) || 0),
+    0
+  );
+
+  const totalPaidToSuppliers = suppliers.reduce(
+    (sum, s) => sum + (Number(s.totalPaid) || 0),
+    0
+  );
+
+  const totalOutstandingPayables = suppliers.reduce(
+    (sum, s) => sum + (Number(s.currentBalance) || 0),
+    0
+  );
+
+  // Recent 5 supplier transactions (newest first)
+  const recentSupplierTxns = [...supplierTransactions]
+    .sort((a, b) => new Date(b.date) - new Date(a.date))
+    .slice(0, 5);
+
+  // Suppliers with outstanding balance (biggest first)
+  const outstandingSuppliers = [...suppliers]
+    .filter((s) => (Number(s.currentBalance) || 0) > 0)
+    .sort((a, b) => (Number(b.currentBalance) || 0) - (Number(a.currentBalance) || 0))
+    .slice(0, 4);
+
+  // ── Customer table columns ────────────────────────────────────────────────
+  const custColumns = [
     {
       header: "Customer",
       key: "customerName",
@@ -85,9 +117,147 @@ export default function Dashboard({
     },
   ];
 
+  // ── Supplier activity table columns ───────────────────────────────────────
+  const supplierTxnTypeStyle = {
+    "Opening Balance": { bg: "#eff6ff", color: "#1d4ed8", border: "#bfdbfe" },
+    "Purchase": { bg: "var(--danger-light)", color: "var(--danger)", border: "#fecaca" },
+    "Payment": { bg: "var(--success-light)", color: "var(--success)", border: "#bbf7d0" },
+    "Purchase Return": { bg: "var(--warning-light)", color: "var(--warning)", border: "#fde68a" },
+  };
+
+  const supplierColumns = [
+    {
+      header: "Supplier",
+      key: "supplierName",
+      render: (row) => (
+        <div className="table-customer-cell">
+          <div className="avatar-circle">
+            {row.supplierName ? row.supplierName.charAt(0).toUpperCase() : "S"}
+          </div>
+          <div>
+            <span className="customer-name-bold">{row.supplierName}</span>
+            <span className="customer-meta-sub">{row.reference}</span>
+          </div>
+        </div>
+      ),
+    },
+    {
+      header: "Type",
+      key: "type",
+      render: (row) => {
+        const c = supplierTxnTypeStyle[row.type] || { bg: "#f1f5f9", color: "#64748b", border: "#cbd5e1" };
+        return (
+          <span
+            style={{
+              display: "inline-flex",
+              alignItems: "center",
+              gap: "5px",
+              padding: "3px 9px",
+              borderRadius: "999px",
+              fontSize: "11px",
+              fontWeight: "600",
+              background: c.bg,
+              color: c.color,
+              border: `1px solid ${c.border}`,
+              whiteSpace: "nowrap",
+            }}
+          >
+            <span
+              style={{
+                width: "5px",
+                height: "5px",
+                borderRadius: "50%",
+                background: c.color,
+                flexShrink: 0,
+                display: "inline-block",
+              }}
+            />
+            {row.type}
+          </span>
+        );
+      },
+    },
+    {
+      header: "Date",
+      key: "date",
+      render: (row) => <span className="date-cell">{row.date}</span>,
+    },
+    {
+      header: "Reference",
+      key: "reference",
+      render: (row) => (
+        <span
+          style={{
+            fontSize: "12px",
+            fontFamily: "var(--font-mono)",
+            color: "var(--text-muted)",
+          }}
+        >
+          {row.reference}
+        </span>
+      ),
+    },
+    {
+      header: "Amount",
+      key: "amount",
+      align: "right",
+      render: (row) => {
+        const isPurchase = row.type === "Purchase" || row.type === "Opening Balance";
+        const amt = isPurchase ? Number(row.debit || 0) : Number(row.credit || 0);
+        return (
+          <span
+            className={`amount-cell ${isPurchase ? "text-danger" : "text-success"}`}
+          >
+            {isPurchase ? "+" : "−"} {currency} {amt.toLocaleString()}
+          </span>
+        );
+      },
+    },
+    {
+      header: "Status",
+      key: "paymentStatus",
+      align: "center",
+      render: (row) => {
+        if (!row.paymentStatus) {
+          return (
+            <span className="payment-method-tag">
+              {row.type === "Payment" ? "Completed" : "—"}
+            </span>
+          );
+        }
+        const statusColors = {
+          "Paid": { bg: "var(--success-light)", color: "var(--success)", border: "#bbf7d0" },
+          "Partially Paid": { bg: "var(--warning-light)", color: "var(--warning)", border: "#fde68a" },
+          "Unpaid": { bg: "var(--danger-light)", color: "var(--danger)", border: "#fecaca" },
+        };
+        const c = statusColors[row.paymentStatus] || { bg: "#f1f5f9", color: "#64748b", border: "#cbd5e1" };
+        return (
+          <span
+            style={{
+              display: "inline-block",
+              padding: "2px 9px",
+              borderRadius: "999px",
+              fontSize: "11px",
+              fontWeight: "600",
+              background: c.bg,
+              color: c.color,
+              border: `1px solid ${c.border}`,
+              whiteSpace: "nowrap",
+            }}
+          >
+            {row.paymentStatus}
+          </span>
+        );
+      },
+    },
+  ];
+
   return (
     <div className="page-dashboard">
-      {/* Overview Stat Cards */}
+
+      {/* ── CUSTOMER SECTION ────────────────────────────────────────────── */}
+
+      {/* Customer Stat Cards */}
       <section className="dashboard-stats-grid">
         <StatCard
           title="Total Customers"
@@ -198,7 +368,7 @@ export default function Dashboard({
         </div>
       </section>
 
-      {/* Grid: Recent Transactions & Top Debtors */}
+      {/* Grid: Recent Customer Transactions & Top Debtors */}
       <div className="dashboard-content-split">
         {/* Recent Transactions */}
         <div className="dashboard-card transactions-card">
@@ -217,7 +387,7 @@ export default function Dashboard({
 
           <div className="dashboard-table-scroll-wrap">
             <Table
-              columns={columns}
+              columns={custColumns}
               data={recentTransactions}
               keyField="id"
               emptyMessage="No transactions recorded yet."
@@ -279,6 +449,202 @@ export default function Dashboard({
           )}
         </div>
       </div>
+
+      {/* ── SUPPLIER SECTION ─────────────────────────────────────────────── */}
+
+      {/* Supplier Section Divider */}
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "14px",
+          margin: "8px 0 20px 0",
+        }}
+      >
+        <div
+          style={{
+            flex: 1,
+            height: "1px",
+            background: "var(--border-color)",
+          }}
+        />
+        <span
+          style={{
+            fontSize: "11px",
+            fontWeight: "700",
+            color: "var(--text-muted)",
+            textTransform: "uppercase",
+            letterSpacing: "0.08em",
+            whiteSpace: "nowrap",
+            display: "flex",
+            alignItems: "center",
+            gap: "7px",
+          }}
+        >
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+            <polyline points="9 22 9 12 15 12 15 22"></polyline>
+          </svg>
+          Supplier Overview
+        </span>
+        <div
+          style={{
+            flex: 1,
+            height: "1px",
+            background: "var(--border-color)",
+          }}
+        />
+      </div>
+
+      {/* Supplier Stat Cards */}
+      <section className="dashboard-stats-grid" style={{ marginBottom: "24px" }}>
+        <StatCard
+          title="Total Suppliers"
+          value={totalSuppliers}
+          icon={
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
+              <polyline points="9 22 9 12 15 12 15 22"></polyline>
+            </svg>
+          }
+          variant="primary"
+          trend={{ direction: "up", label: "Active vendors" }}
+          onClick={() => onNavigate("suppliers")}
+        />
+
+        <StatCard
+          title="Total Purchases"
+          value={`${currency} ${totalPurchases.toLocaleString()}`}
+          icon={
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="9" cy="21" r="1"></circle>
+              <circle cx="20" cy="21" r="1"></circle>
+              <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+            </svg>
+          }
+          variant="danger"
+          trend={{ direction: "up", label: "All purchases" }}
+          onClick={() => onNavigate("suppliers")}
+        />
+
+        <StatCard
+          title="Total Paid to Suppliers"
+          value={`${currency} ${totalPaidToSuppliers.toLocaleString()}`}
+          icon={
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
+              <polyline points="17 6 23 6 23 12"></polyline>
+            </svg>
+          }
+          variant="success"
+          trend={{ direction: "up", label: "Payments made" }}
+          onClick={() => onNavigate("suppliers")}
+        />
+
+        <StatCard
+          title="Outstanding Payables"
+          value={`${currency} ${totalOutstandingPayables.toLocaleString()}`}
+          icon={
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="5" width="20" height="14" rx="2"></rect>
+              <line x1="2" y1="10" x2="22" y2="10"></line>
+            </svg>
+          }
+          variant="warning"
+          trend={{
+            direction: totalOutstandingPayables > 0 ? "up" : "down",
+            label: totalOutstandingPayables > 0 ? "Due" : "Cleared",
+          }}
+          onClick={() => onNavigate("suppliers")}
+        />
+      </section>
+
+      {/* Grid: Supplier Activity & Outstanding Payables */}
+      <div className="dashboard-content-split">
+        {/* Supplier Activity */}
+        <div className="dashboard-card transactions-card">
+          <div className="card-header-flex">
+            <div>
+              <h2 className="card-heading">Supplier Activity</h2>
+              <p className="card-subheading" style={{ marginTop: "2px", fontSize: "12px", color: "var(--text-muted)" }}>
+                Recent purchases & payments
+              </p>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onNavigate("suppliers")}
+            >
+              View All →
+            </Button>
+          </div>
+
+          <div className="dashboard-table-scroll-wrap">
+            <Table
+              columns={supplierColumns}
+              data={recentSupplierTxns}
+              keyField="id"
+              onRowClick={(row) => onNavigate("supplier-details", row.supplierId)}
+              emptyMessage="No supplier transactions recorded yet."
+            />
+          </div>
+        </div>
+
+        {/* Outstanding Payables Side Card */}
+        <div className="dashboard-card top-debtors-card">
+          <div className="card-header-flex">
+            <div>
+              <h2 className="card-heading">Outstanding Payables</h2>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onNavigate("suppliers")}
+            >
+              All →
+            </Button>
+          </div>
+
+          {outstandingSuppliers.length === 0 ? (
+            <div className="empty-debtors">
+              <div className="empty-check-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+                  <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                </svg>
+              </div>
+              <p>All supplier accounts are cleared!</p>
+            </div>
+          ) : (
+            <div className="debtors-list">
+              {outstandingSuppliers.map((supplier) => (
+                <div
+                  key={supplier.id}
+                  className="debtor-item"
+                  onClick={() => onNavigate("supplier-details", supplier.id)}
+                >
+                  <div className="debtor-left">
+                    <div className="avatar-circle">
+                      {supplier.name ? supplier.name.charAt(0).toUpperCase() : "S"}
+                    </div>
+                    <div>
+                      <h4 className="debtor-name">{supplier.name}</h4>
+                      <p className="debtor-phone">{supplier.phone}</p>
+                    </div>
+                  </div>
+                  <div className="debtor-right">
+                    <span className="debtor-amount" style={{ color: "var(--danger)" }}>
+                      {currency} {(Number(supplier.currentBalance) || 0).toLocaleString()}
+                    </span>
+                    <span className="debtor-action-hint">View Supplier →</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+
     </div>
   );
 }

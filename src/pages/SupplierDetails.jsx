@@ -40,6 +40,26 @@ export default function SupplierDetails({
   const [paymentModalOpen, setPaymentModalOpen] = useState(false);
   const [activeTab, setActiveTab] = useState("ledger"); // "ledger" | "purchases" | "payments"
 
+  // All hooks MUST run before any early return (Rules of Hooks)
+  const supplierId = supplier?.id ?? "";
+
+  const myTxns = useMemo(
+    () => supplierTransactions.filter((t) => t.supplierId === supplierId),
+    [supplierTransactions, supplierId]
+  );
+
+  const ledgerWithRunning = useMemo(() => computeLedger(myTxns), [myTxns]);
+
+  const purchaseTxns = useMemo(
+    () => myTxns.filter((t) => t.type === "Purchase").sort((a, b) => new Date(b.date) - new Date(a.date)),
+    [myTxns]
+  );
+
+  const paymentTxns = useMemo(
+    () => myTxns.filter((t) => t.type === "Payment").sort((a, b) => new Date(b.date) - new Date(a.date)),
+    [myTxns]
+  );
+
   if (!supplier) {
     return (
       <div className="empty-state-card" style={{ padding: "48px 24px", textAlign: "center" }}>
@@ -59,24 +79,6 @@ export default function SupplierDetails({
   const currBal = Number(supplier.currentBalance) || 0;
   const totalPurchases = Number(supplier.totalPurchases) || 0;
   const totalPaid = Number(supplier.totalPaid) || 0;
-
-  // Filter transactions for this supplier
-  const myTxns = useMemo(
-    () => supplierTransactions.filter((t) => t.supplierId === supplier.id),
-    [supplierTransactions, supplier.id]
-  );
-
-  const ledgerWithRunning = useMemo(() => computeLedger(myTxns), [myTxns]);
-
-  const purchaseTxns = useMemo(
-    () => myTxns.filter((t) => t.type === "Purchase").sort((a, b) => new Date(b.date) - new Date(a.date)),
-    [myTxns]
-  );
-
-  const paymentTxns = useMemo(
-    () => myTxns.filter((t) => t.type === "Payment").sort((a, b) => new Date(b.date) - new Date(a.date)),
-    [myTxns]
-  );
 
   const handleSaveEdit = (updatedData) => {
     onUpdateSupplier(supplier.id, updatedData);

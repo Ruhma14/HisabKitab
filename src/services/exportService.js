@@ -444,7 +444,7 @@ export function exportCustomerExcel(customer, transactions = [], shopInfo = {}) 
 /**
  * Generate and trigger print/save PDF for overall financial report
  */
-export function exportOverallPDF(customers = [], transactions = [], shopInfo = {}, period = "All Time", monthlyReportData = []) {
+export function exportOverallPDF(customers = [], transactions = [], shopInfo = {}, period = "All Time") {
   const currency = shopInfo?.currency || "Rs.";
   const storeName = shopInfo?.name || "Bismillah Store";
   const owner = shopInfo?.owner || "Shop Owner";
@@ -1268,4 +1268,244 @@ export function exportTransactionReceiptPDF(transaction = {}, customer = {}, sho
   const cleanCustomerName = customerName.replace(/[^a-zA-Z0-9]/g, "_");
   const filename = `Receipt_${cleanNo}_${cleanCustomerName}.pdf`;
   downloadHtmlAsPdf(filename, html);
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// SUPPLIER STATEMENT EXPORTS
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Compute a running-balance ledger from supplier transactions (oldest first).
+ * Returns an array of rows with { ...txn, runningBalance }
+ */
+function buildSupplierLedger(txns) {
+  const sorted = [...txns].sort((a, b) => new Date(a.date) - new Date(b.date));
+  let balance = 0;
+  return sorted.map((t) => {
+    const debit  = Number(t.debit  || 0);
+    const credit = Number(t.credit || 0);
+    balance += debit - credit;
+    return { ...t, runningBalance: balance };
+  });
+}
+
+/**
+ * Export a Supplier Statement as a formatted PDF.
+ */
+export function exportSupplierStatementPDF(supplier, txns = [], shopInfo = {}, fromDate = null, toDate = null) {
+  if (!supplier) return;
+
+  const currency  = shopInfo?.currency || "Rs.";
+  const storeName = shopInfo?.name || "Bismillah Store";
+  const owner     = shopInfo?.owner || "Shop Owner";
+  const phone     = shopInfo?.phone || "+92 300 1234567";
+  const address   = shopInfo?.address || "Main Bazaar, Pakistan";
+  const dateStr   = new Date().toLocaleDateString("en-PK", { year: "numeric", month: "long", day: "numeric" });
+
+  // Apply date filter
+  let filtered = txns.filter((t) => t.supplierId === supplier.id);
+  if (fromDate) filtered = filtered.filter((t) => t.date >= fromDate);
+  if (toDate)   filtered = filtered.filter((t) => t.date <= toDate);
+
+  const ledger = buildSupplierLedger(filtered);
+
+  const openBal      = filtered.filter((t) => t.type === "Opening Balance").reduce((s, t) => s + Number(t.debit || 0), 0);
+  const totalPurch   = filtered.filter((t) => t.type === "Purchase").reduce((s, t) => s + Number(t.debit || 0), 0);
+  const totalPayments= filtered.filter((t) => t.type === "Payment").reduce((s, t) => s + Number(t.credit || 0), 0);
+  const totalReturns = filtered.filter((t) => t.type === "Purchase Return").reduce((s, t) => s + Number(t.credit || 0), 0);
+  const closingBal   = openBal + totalPurch - totalPayments - totalReturns;
+
+  const periodLabel = fromDate && toDate ? `${fromDate} to ${toDate}` : fromDate ? `From ${fromDate}` : toDate ? `Until ${toDate}` : "All Time";
+
+  const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>${supplier.name} - Supplier Statement (${storeName})</title>
+  <style>
+    @page { size: A4 portrait; margin: 14mm; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif; color: #1e293b; background: #fff; font-size: 11pt; line-height: 1.4; padding: 10px; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #7c3aed; padding-bottom: 14px; margin-bottom: 16px; }
+    .brand h1 { font-size: 19pt; color: #0f172a; font-weight: 800; }
+    .brand p { font-size: 9pt; color: #64748b; margin-top: 2px; }
+    .meta { text-align: right; }
+    .badge { display: inline-block; background: #f5f3ff; color: #7c3aed; font-weight: 700; font-size: 9pt; padding: 3px 8px; border-radius: 4px; margin-bottom: 4px; }
+    .meta p { font-size: 9pt; color: #64748b; }
+    .kpi-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 8px; margin-bottom: 18px; }
+    .kpi-card { border: 1px solid #e2e8f0; border-radius: 6px; padding: 9px 12px; background: #f8fafc; }
+    .kpi-label { font-size: 7.5pt; color: #64748b; text-transform: uppercase; font-weight: 600; letter-spacing: 0.04em; }
+    .kpi-val { font-size: 12pt; font-weight: 700; margin-top: 4px; }
+    .text-danger { color: #dc2626; } .text-success { color: #16a34a; } .text-primary { color: #2563eb; } .text-warning { color: #d97706; } .text-purple { color: #7c3aed; }
+    .section-title { font-size: 10.5pt; font-weight: 700; color: #0f172a; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.03em; border-left: 3px solid #7c3aed; padding-left: 8px; }
+    .profile-box { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 18px; }
+    .profile-cell { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 12px; }
+    .profile-cell .lbl { font-size: 8pt; color: #64748b; display: block; }
+    .profile-cell .val { font-size: 10pt; font-weight: 600; }
+    table { width: 100%; border-collapse: collapse; font-size: 8.5pt; margin-bottom: 20px; }
+    th { background: #f1f5f9; color: #475569; font-weight: 700; text-align: left; padding: 6px 8px; border: 1px solid #cbd5e1; }
+    td { padding: 5px 8px; border: 1px solid #e2e8f0; color: #334155; }
+    tr:nth-child(even) { background: #f8fafc; }
+    .text-right { text-align: right; }
+    .footer { margin-top: 28px; padding-top: 14px; border-top: 1px dashed #cbd5e1; display: flex; justify-content: space-between; font-size: 9pt; color: #64748b; }
+    .sign-box { width: 180px; border-top: 1px solid #94a3b8; text-align: center; padding-top: 4px; margin-top: 32px; }
+    @media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="brand">
+      <h1>${storeName}</h1>
+      <p>Proprietor: <strong>${owner}</strong> • ${phone}</p>
+      <p>${address}</p>
+    </div>
+    <div class="meta">
+      <span class="badge">SUPPLIER STATEMENT</span>
+      <p><strong>Supplier:</strong> ${supplier.name}</p>
+      <p><strong>Period:</strong> ${periodLabel}</p>
+      <p><strong>Generated:</strong> ${dateStr}</p>
+    </div>
+  </div>
+
+  <div class="section-title">Supplier Profile</div>
+  <div class="profile-box" style="margin-bottom:16px;">
+    <div class="profile-cell"><span class="lbl">Supplier Name</span><span class="val">${supplier.name}</span></div>
+    <div class="profile-cell"><span class="lbl">Phone Number</span><span class="val">${supplier.phone || "—"}</span></div>
+    <div class="profile-cell"><span class="lbl">Email Address</span><span class="val">${supplier.email || "—"}</span></div>
+    <div class="profile-cell"><span class="lbl">Address</span><span class="val">${supplier.address || "—"}</span></div>
+    <div class="profile-cell"><span class="lbl">Account Status</span><span class="val" style="color:${supplier.status === "Active" ? "#16a34a" : "#64748b"}">${supplier.status || "Active"}</span></div>
+    <div class="profile-cell"><span class="lbl">Account ID</span><span class="val">${supplier.id}</span></div>
+  </div>
+
+  <div class="section-title">Financial Summary</div>
+  <div class="kpi-grid" style="margin-bottom:18px;">
+    <div class="kpi-card"><div class="kpi-label">Opening Balance</div><div class="kpi-val text-primary">${currency} ${openBal.toLocaleString()}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Total Purchases</div><div class="kpi-val text-danger">${currency} ${totalPurch.toLocaleString()}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Total Payments</div><div class="kpi-val text-success">${currency} ${totalPayments.toLocaleString()}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Purchase Returns</div><div class="kpi-val text-warning">${currency} ${totalReturns.toLocaleString()}</div></div>
+    <div class="kpi-card"><div class="kpi-label">Outstanding Payable</div><div class="kpi-val ${closingBal > 0 ? "text-danger" : "text-success"}">${currency} ${closingBal.toLocaleString()}</div></div>
+  </div>
+
+  <div class="section-title">Statement of Account (${ledger.length} entries)</div>
+  <table>
+    <thead>
+      <tr>
+        <th>Date</th><th>Reference</th><th>Type</th><th>Description</th>
+        <th class="text-right">Debit</th><th class="text-right">Credit</th><th class="text-right">Running Balance</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${ledger.length === 0 ? '<tr><td colspan="7" style="text-align:center;">No transactions found for selected period.</td></tr>' : ""}
+      ${ledger.map((r) => {
+        const debit  = Number(r.debit  || 0);
+        const credit = Number(r.credit || 0);
+        const bal    = r.runningBalance;
+        return `<tr>
+          <td>${r.date}</td>
+          <td style="font-family:monospace;font-size:8pt;">${r.reference || "—"}</td>
+          <td style="font-weight:600;color:${debit > 0 ? "#dc2626" : "#16a34a"}">${r.type}</td>
+          <td>${r.description || "—"}</td>
+          <td class="text-right text-danger">${debit > 0 ? `${currency} ${debit.toLocaleString()}` : "—"}</td>
+          <td class="text-right text-success">${credit > 0 ? `${currency} ${credit.toLocaleString()}` : "—"}</td>
+          <td class="text-right" style="font-weight:700;color:${bal > 0 ? "#dc2626" : "#16a34a"}">${currency} ${bal.toLocaleString()}</td>
+        </tr>`;
+      }).join("")}
+    </tbody>
+  </table>
+
+  <div class="footer">
+    <div>
+      <p>Generated digitally by HisabKitab Cloud Ledger.</p>
+      <p>Supplier Statement for ${storeName} • ${dateStr}</p>
+    </div>
+    <div><div class="sign-box">Authorized Signature</div></div>
+  </div>
+</body>
+</html>`;
+
+  const cleanName = supplier.name.replace(/[^a-zA-Z0-9]/g, "_");
+  downloadHtmlAsPdf(`Supplier_Statement_${cleanName}_${new Date().toISOString().split("T")[0]}.pdf`, html);
+}
+
+/**
+ * Export a Supplier Statement as a formatted Excel (.xls).
+ */
+export function exportSupplierStatementExcel(supplier, txns = [], shopInfo = {}, fromDate = null, toDate = null) {
+  if (!supplier) return;
+
+  const currency  = shopInfo?.currency || "Rs.";
+  const storeName = shopInfo?.name || "Bismillah Store";
+  const dateStr   = new Date().toLocaleDateString("en-PK", { year: "numeric", month: "long", day: "numeric" });
+  const periodLabel = fromDate && toDate ? `${fromDate} to ${toDate}` : "All Time";
+
+  let filtered = txns.filter((t) => t.supplierId === supplier.id);
+  if (fromDate) filtered = filtered.filter((t) => t.date >= fromDate);
+  if (toDate)   filtered = filtered.filter((t) => t.date <= toDate);
+
+  const ledger = buildSupplierLedger(filtered);
+
+  const openBal       = filtered.filter((t) => t.type === "Opening Balance").reduce((s, t) => s + Number(t.debit || 0), 0);
+  const totalPurch    = filtered.filter((t) => t.type === "Purchase").reduce((s, t) => s + Number(t.debit || 0), 0);
+  const totalPayments = filtered.filter((t) => t.type === "Payment").reduce((s, t) => s + Number(t.credit || 0), 0);
+  const totalReturns  = filtered.filter((t) => t.type === "Purchase Return").reduce((s, t) => s + Number(t.credit || 0), 0);
+  const closingBal    = openBal + totalPurch - totalPayments - totalReturns;
+
+  const html = `
+    <table>
+      <tr><td colspan="7" class="title-cell">${storeName} - Supplier Khata Statement</td></tr>
+      <tr><td colspan="7" class="meta-cell">Supplier: <strong>${supplier.name}</strong> • Phone: ${supplier.phone || "—"} • ${supplier.email || ""}</td></tr>
+      <tr><td colspan="7" class="meta-cell">Period: <strong>${periodLabel}</strong> • Generated: <strong>${dateStr}</strong></td></tr>
+      <tr><td colspan="7" style="border:none;height:12px;"></td></tr>
+
+      <tr><td colspan="7" class="section-cell">FINANCIAL SUMMARY</td></tr>
+      <tr>
+        <td colspan="3" class="kpi-title">Opening Balance</td>
+        <td colspan="4" class="text-right">${currency} ${openBal.toLocaleString()}</td>
+      </tr>
+      <tr>
+        <td colspan="3" class="kpi-title">Total Purchases</td>
+        <td colspan="4" class="text-right text-danger">${currency} ${totalPurch.toLocaleString()}</td>
+      </tr>
+      <tr>
+        <td colspan="3" class="kpi-title">Total Payments Made</td>
+        <td colspan="4" class="text-right text-success">${currency} ${totalPayments.toLocaleString()}</td>
+      </tr>
+      <tr>
+        <td colspan="3" class="kpi-title">Total Purchase Returns</td>
+        <td colspan="4" class="text-right">${currency} ${totalReturns.toLocaleString()}</td>
+      </tr>
+      <tr style="background-color:#eff6ff;">
+        <td colspan="3" class="kpi-title" style="font-size:12pt;font-weight:bold;color:#1e3a8a;">Outstanding Payable (Closing Balance)</td>
+        <td colspan="4" class="text-right" style="font-size:12pt;font-weight:bold;color:${closingBal > 0 ? "#dc2626" : "#16a34a"};">${currency} ${closingBal.toLocaleString()}</td>
+      </tr>
+      <tr><td colspan="7" style="border:none;height:16px;"></td></tr>
+
+      <tr><td colspan="7" class="section-cell">CHRONOLOGICAL STATEMENT OF ACCOUNT</td></tr>
+      <tr>
+        <th style="background-color:#581c87;">Date</th>
+        <th style="background-color:#581c87;">Reference</th>
+        <th style="background-color:#581c87;">Type</th>
+        <th style="background-color:#581c87;">Description</th>
+        <th style="background-color:#581c87;text-align:right;">Debit</th>
+        <th style="background-color:#581c87;text-align:right;">Credit</th>
+        <th style="background-color:#581c87;text-align:right;">Running Balance</th>
+      </tr>
+      ${ledger.map((r, i) => {
+        const debit  = Number(r.debit  || 0);
+        const credit = Number(r.credit || 0);
+        const bg = i % 2 === 0 ? "#ffffff" : "#f8fafc";
+        return `<tr style="background-color:${bg};">
+          <td>${r.date}</td>
+          <td style="font-family:monospace;">${r.reference || "—"}</td>
+          <td style="font-weight:bold;">${r.type}</td>
+          <td>${r.description || "—"}</td>
+          <td class="text-right text-danger">${debit > 0 ? `${currency} ${debit.toLocaleString()}` : "—"}</td>
+          <td class="text-right text-success">${credit > 0 ? `${currency} ${credit.toLocaleString()}` : "—"}</td>
+          <td class="text-right" style="font-weight:bold;color:${r.runningBalance > 0 ? "#dc2626" : "#16a34a"};">${currency} ${r.runningBalance.toLocaleString()}</td>
+        </tr>`;
+      }).join("")}
+    </table>`;
+
+  const cleanName = supplier.name.replace(/[^a-zA-Z0-9]/g, "_");
+  triggerExcelDownload(html, `Supplier_Statement_${cleanName}_${new Date().toISOString().split("T")[0]}.xls`);
 }
