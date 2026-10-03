@@ -29,6 +29,7 @@ import {
   isReceiptNumberUnique,
 } from "./utils/receiptUtils";
 import { exportTransactionReceiptPDF } from "./services/exportService";
+import { sendTransactionEmail } from "./services/emailService";
 
 
 export default function App() {
@@ -270,6 +271,7 @@ export default function App() {
       return updated;
     });
 
+    let updatedSupplierBalance = 0;
     // Update supplier: currentBalance += (totalAmount - amountPaid), totalPurchases += totalAmount, totalPaid += amountPaid
     setSuppliers((prev) => {
       const updated = prev.map((s) => {
@@ -277,6 +279,7 @@ export default function App() {
           const newTotal = (Number(s.totalPurchases) || 0) + Number(meta.totalAmount);
           const newPaid = (Number(s.totalPaid) || 0) + Number(meta.amountPaid);
           const newBalance = (Number(s.currentBalance) || 0) + Number(meta.remaining);
+          updatedSupplierBalance = newBalance;
           return {
             ...s,
             totalPurchases: newTotal,
@@ -294,6 +297,33 @@ export default function App() {
     toast.success(`Purchase Recorded: ${shopInfo.currency} ${Number(meta.totalAmount).toLocaleString()}`, {
       description: `For ${supplier?.name || "Supplier"}. Remaining: ${shopInfo.currency} ${Number(meta.remaining).toLocaleString()}`,
     });
+
+    // Automatic Email Notification for Supplier Purchase
+    if (supplier?.email) {
+      sendTransactionEmail({
+        toEmail: supplier.email,
+        toName: supplier.name,
+        recipientType: "Supplier",
+        transactionType: "Purchase",
+        amount: meta.totalAmount,
+        date: purchaseTxn.date,
+        description: purchaseTxn.description || purchaseTxn.item,
+        updatedBalance: updatedSupplierBalance,
+        currency: shopInfo.currency,
+        billNumber: purchaseTxn.reference,
+        shopInfo,
+      }).then((res) => {
+        if (res.success) {
+          toast.success(`Notification email sent to ${supplier.name} (${supplier.email})`);
+        } else if (res.reason === "config_missing") {
+          toast.info("Transaction saved. Email notification pending EmailJS setup in Settings.");
+        } else {
+          toast.warning(`Email notification could not be delivered to ${supplier.email}: ${res.message}`);
+        }
+      });
+    } else {
+      toast.info(`No registered email on file for ${supplier?.name || "Supplier"} — transaction saved.`);
+    }
   };
 
   // Make a Payment to Supplier
@@ -305,12 +335,14 @@ export default function App() {
       return updated;
     });
 
+    let updatedSupplierBalance = 0;
     // Update supplier: currentBalance -= amountPaid, totalPaid += amountPaid
     setSuppliers((prev) => {
       const updated = prev.map((s) => {
         if (s.id === meta.supplierId) {
           const newPaid = (Number(s.totalPaid) || 0) + Number(meta.amountPaid);
           const newBalance = Math.max(0, (Number(s.currentBalance) || 0) - Number(meta.amountPaid));
+          updatedSupplierBalance = newBalance;
           return {
             ...s,
             totalPaid: newPaid,
@@ -327,6 +359,33 @@ export default function App() {
     toast.success(`Payment Recorded: ${shopInfo.currency} ${Number(meta.amountPaid).toLocaleString()}`, {
       description: `Payment sent to ${supplier?.name || "Supplier"} successfully.`,
     });
+
+    // Automatic Email Notification for Supplier Payment
+    if (supplier?.email) {
+      sendTransactionEmail({
+        toEmail: supplier.email,
+        toName: supplier.name,
+        recipientType: "Supplier",
+        transactionType: "Payment",
+        amount: meta.amountPaid,
+        date: paymentTxn.date,
+        description: paymentTxn.description,
+        updatedBalance: updatedSupplierBalance,
+        currency: shopInfo.currency,
+        billNumber: paymentTxn.reference,
+        shopInfo,
+      }).then((res) => {
+        if (res.success) {
+          toast.success(`Notification email sent to ${supplier.name} (${supplier.email})`);
+        } else if (res.reason === "config_missing") {
+          toast.info("Transaction saved. Email notification pending EmailJS setup in Settings.");
+        } else {
+          toast.warning(`Email notification could not be delivered to ${supplier.email}: ${res.message}`);
+        }
+      });
+    } else {
+      toast.info(`No registered email on file for ${supplier?.name || "Supplier"} — transaction saved.`);
+    }
   };
 
   // Modal State: Add Transaction
@@ -347,6 +406,7 @@ export default function App() {
     name: "",
     countryCode: "+92",
     phone: "",
+    email: "",
     address: "",
     openingBalance: "",
   });
@@ -472,11 +532,21 @@ export default function App() {
     // Update transactions list
     setTransactions((prev) => [newTxn, ...prev]);
 
+    // Calculate updated customer balance
+    let updatedCustBalance = 0;
+    const isUdhaar = txnForm.type === "Udhaar";
+    if (targetCustomer) {
+      const currentUdhaar = targetCustomer.totalUdhaar || 0;
+      const currentJama = targetCustomer.totalJama || 0;
+      const newUdhaar = currentUdhaar + (isUdhaar ? amountNum : 0);
+      const newJama = currentJama + (!isUdhaar ? amountNum : 0);
+      updatedCustBalance = newUdhaar - newJama;
+    }
+
     // Update customer balances
     setCustomers((prev) =>
       prev.map((cust) => {
         if (cust.id === txnForm.customerId) {
-          const isUdhaar = txnForm.type === "Udhaar";
           const newUdhaar = (cust.totalUdhaar || 0) + (isUdhaar ? amountNum : 0);
           const newJama = (cust.totalJama || 0) + (!isUdhaar ? amountNum : 0);
           const newBalance = newUdhaar - newJama;
@@ -512,6 +582,33 @@ export default function App() {
         },
       });
     }
+
+    // Automatic Email Notification for Customer Transaction
+    if (targetCustomer?.email) {
+      sendTransactionEmail({
+        toEmail: targetCustomer.email,
+        toName: targetCustomer.name,
+        recipientType: "Customer",
+        transactionType: newTxn.type,
+        amount: newTxn.amount,
+        date: newTxn.date,
+        description: newTxn.description,
+        updatedBalance: updatedCustBalance,
+        currency: shopInfo.currency,
+        billNumber: newTxn.billNumber,
+        shopInfo,
+      }).then((res) => {
+        if (res.success) {
+          toast.success(`Notification email sent to ${targetCustomer.name} (${targetCustomer.email})`);
+        } else if (res.reason === "config_missing") {
+          toast.info("Transaction saved. Email notification pending EmailJS setup in Settings.");
+        } else {
+          toast.warning(`Email notification could not be delivered to ${targetCustomer.email}: ${res.message}`);
+        }
+      });
+    } else {
+      toast.info(`No registered email on file for ${customerName} — transaction saved.`);
+    }
   };
 
   // Open Add Customer Modal
@@ -520,6 +617,7 @@ export default function App() {
       name: "",
       countryCode: shopInfo?.countryCode || "+92",
       phone: "",
+      email: "",
       address: "",
       openingBalance: "",
     });
@@ -548,6 +646,17 @@ export default function App() {
       return;
     }
 
+    const cleanEmail = custForm.email ? custForm.email.trim() : "";
+    if (cleanEmail) {
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      if (!emailRegex.test(cleanEmail)) {
+        toast.error("Invalid Email Format", {
+          description: "Please enter a valid email address (e.g. customer@example.com).",
+        });
+        return;
+      }
+    }
+
     const newId = `c${Date.now()}`;
     const openBal = Number(custForm.openingBalance || 0);
     const fullPhone = `${custForm.countryCode || "+92"} ${custForm.phone.trim()}`;
@@ -556,6 +665,7 @@ export default function App() {
       id: newId,
       name: cleanName,
       phone: fullPhone,
+      email: cleanEmail,
       address: custForm.address.trim() || "Local Customer",
       totalUdhaar: openBal > 0 ? openBal : 0,
       totalJama: 0,
@@ -1092,6 +1202,23 @@ export default function App() {
                 }
               />
             </div>
+          </div>
+
+          <div className="form-group">
+            <label className="form-label" htmlFor="cust-email">
+              Email Address (For Automatic Transaction Slips)
+            </label>
+            <input
+              id="cust-email"
+              type="email"
+              className="form-input"
+              placeholder="e.g. customer@gmail.com (Optional)"
+              value={custForm.email || ""}
+              onChange={(e) =>
+                setCustForm((prev) => ({ ...prev, email: e.target.value }))
+              }
+            />
+            <span className="field-hint">Automatic transaction notifications branded Alam Garments will be sent to this email.</span>
           </div>
 
           <div className="form-group">

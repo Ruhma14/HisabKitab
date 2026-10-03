@@ -249,6 +249,9 @@ export default function Reports({
   onSelectCustomer,
   onSelectSupplier,
 }) {
+  // ── Report view selector ──
+  const [reportView, setReportView] = useState("customers"); // "customers" | "suppliers"
+
   // ── Customer state ──
   const [selectedPeriod,     setSelectedPeriod]     = useState("6months");
   const [selectedCustomerId, setSelectedCustomerId] = useState("all");
@@ -258,6 +261,9 @@ export default function Reports({
   const [supplierSearch,         setSupplierSearch]         = useState("");
   const [statementSupplier,      setStatementSupplier]      = useState(null);
   const [statementModalOpen,     setStatementModalOpen]     = useState(false);
+
+  const showCustomerReports = reportView === "customers";
+  const showSupplierReports = reportView === "suppliers";
 
   // ─── Customer computations (UNCHANGED) ─────────────────────────────────────
   const totalUdhaar = transactions
@@ -539,50 +545,93 @@ export default function Reports({
   return (
     <div className="page-reports">
 
-      {/* ── Top Export Bar (Customer — UNCHANGED) ────────────────────────────── */}
-      <div className="reports-top-bar" style={{ justifyContent: "flex-end" }}>
-        <div className="reports-export-group">
-          <select
-            className="filter-select customer-export-select"
-            value={selectedCustomerId}
-            onChange={(e) => setSelectedCustomerId(e.target.value)}
-            title="Choose target report"
+      {/* ── Source Selector Tab Bar ───────────────────────────────────────────── */}
+      <div className="dashboard-tab-bar" style={{ marginBottom: "20px" }}>
+        {[
+          {
+            id: "customers",
+            label: "Customers",
+            icon: (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                <circle cx="9" cy="7" r="4" />
+                <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+                <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+              </svg>
+            ),
+          },
+          {
+            id: "suppliers",
+            label: "Suppliers",
+            icon: (
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="1" y="3" width="15" height="13" />
+                <polygon points="16 8 20 8 23 11 23 16 16 16 16 8" />
+                <circle cx="5.5" cy="18.5" r="2.5" />
+                <circle cx="18.5" cy="18.5" r="2.5" />
+              </svg>
+            ),
+          },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            className={`dashboard-tab-btn ${reportView === tab.id ? "active" : ""}`}
+            onClick={() => setReportView(tab.id)}
           >
-            <option value="all">📊 All Customers (Full Business)</option>
-            <optgroup label="Individual Customer Statements">
-              {customers.map((c) => (
-                <option key={c.id} value={c.id}>
-                  👤 {c.name} ({(c.balance || 0) > 0 ? `Due: ${currency} ${(c.balance || 0).toLocaleString()}` : "Cleared"})
-                </option>
-              ))}
-            </optgroup>
-          </select>
-          <select className="filter-select" value={selectedPeriod} onChange={(e) => setSelectedPeriod(e.target.value)}>
-            <option value="3months">Last 3 Months</option>
-            <option value="6months">Last 6 Months</option>
-            <option value="year">Current Financial Year</option>
-            <option value="all">All Time History</option>
-          </select>
-          <Button variant="outline" size="sm" onClick={() => handleExport("PDF")} title="Generate and save statement as PDF">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
-              <polyline points="14 2 14 8 20 8"></polyline>
-              <line x1="16" y1="13" x2="8" y2="13"></line>
-              <line x1="16" y1="17" x2="8" y2="17"></line>
-            </svg>
-            <span>Export PDF</span>
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => handleExport("Excel")} title="Download formatted spreadsheet">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M18 20V10"></path><path d="M12 20V4"></path><path d="M6 20v-6"></path>
-            </svg>
-            <span>Export CSV / Excel</span>
-          </Button>
-        </div>
+            <span className="dashboard-tab-icon">{tab.icon}</span>
+            <span>{tab.label}</span>
+          </button>
+        ))}
       </div>
 
-      {/* ── Customer KPI Cards (UNCHANGED) ──────────────────────────────────── */}
-      <section className="dashboard-stats-grid">
+
+      {/* ── Top Export Bar (Customer) ─────────────────────────────────────────── */}
+      {showCustomerReports && (
+        <div className="reports-top-bar" style={{ justifyContent: "flex-end" }}>
+          <div className="reports-export-group">
+            <select
+              className="filter-select customer-export-select"
+              value={selectedCustomerId}
+              onChange={(e) => setSelectedCustomerId(e.target.value)}
+              title="Choose target report"
+            >
+              <option value="all">📊 All Customers (Full Business)</option>
+              <optgroup label="Individual Customer Statements">
+                {customers.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    👤 {c.name} ({(c.balance || 0) > 0 ? `Due: ${currency} ${(c.balance || 0).toLocaleString()}` : "Cleared"})
+                  </option>
+                ))}
+              </optgroup>
+            </select>
+            <select className="filter-select" value={selectedPeriod} onChange={(e) => setSelectedPeriod(e.target.value)}>
+              <option value="3months">Last 3 Months</option>
+              <option value="6months">Last 6 Months</option>
+              <option value="year">Current Financial Year</option>
+              <option value="all">All Time History</option>
+            </select>
+            <Button variant="outline" size="sm" onClick={() => handleExport("PDF")} title="Generate and save statement as PDF">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+                <polyline points="14 2 14 8 20 8"></polyline>
+                <line x1="16" y1="13" x2="8" y2="13"></line>
+                <line x1="16" y1="17" x2="8" y2="17"></line>
+              </svg>
+              <span>Export PDF</span>
+            </Button>
+            <Button variant="outline" size="sm" onClick={() => handleExport("Excel")} title="Download formatted spreadsheet">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M18 20V10"></path><path d="M12 20V4"></path><path d="M6 20v-6"></path>
+              </svg>
+              <span>Export CSV / Excel</span>
+            </Button>
+          </div>
+        </div>
+      )}
+
+      {/* ── Customer KPI Cards ────────────────────────────────────────────────── */}
+      {showCustomerReports && <section className="dashboard-stats-grid">
         <StatCard
           title="Overall Recovery Rate"
           value={`${recoveryRate}%`}
@@ -611,10 +660,10 @@ export default function Reports({
           variant="warning"
           trend={{ direction: "up", label: "Pending Due" }}
         />
-      </section>
+      </section>}
 
-      {/* ── Customer Khata Statements (UNCHANGED) ────────────────────────────── */}
-      <div className="dashboard-card customer-export-directory-card" style={{ marginBottom: "24px" }}>
+      {/* ── Customer Khata Statements ─────────────────────────────────────────── */}
+      {showCustomerReports && <div className="dashboard-card customer-export-directory-card" style={{ marginBottom: "24px" }}>
         <div className="card-header-flex">
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <h3 className="card-heading">Customer Khata Statements (Export Separately)</h3>
@@ -645,10 +694,10 @@ export default function Reports({
             emptyMessage="No matching customer accounts found."
           />
         </div>
-      </div>
+      </div>}
 
-      {/* ── Monthly Chart (UNCHANGED) ─────────────────────────────────────────── */}
-      <div className="dashboard-card reports-chart-card">
+      {/* ── Monthly Chart ─────────────────────────────────────────────────────── */}
+      {showCustomerReports && <div className="dashboard-card reports-chart-card">
         <div className="card-header-flex">
           <div><h3 className="card-heading">Monthly Udhaar vs. Jama Comparison</h3></div>
           <div className="chart-legend">
@@ -678,10 +727,10 @@ export default function Reports({
             })}
           </div>
         </div>
-      </div>
+      </div>}
 
-      {/* ── Analytics Split (UNCHANGED) ──────────────────────────────────────── */}
-      <div className="reports-analytics-split">
+      {/* ── Analytics Split ───────────────────────────────────────────────────── */}
+      {showCustomerReports && <div className="reports-analytics-split">
         <div className="dashboard-card category-breakdown-card">
           <h3 className="card-heading">Top Udhaar Categories</h3>
           <div className="category-progress-list" style={{ marginTop: "14px" }}>
@@ -723,27 +772,16 @@ export default function Reports({
             </table>
           </div>
         </div>
-      </div>
+      </div>}
 
       {/* ══════════════════════════════════════════════════════════════════════
           SUPPLIER SECTION
       ══════════════════════════════════════════════════════════════════════ */}
 
-      {/* Supplier Section Divider */}
-      <div style={{ display: "flex", alignItems: "center", gap: "14px", margin: "8px 0 22px 0" }}>
-        <div style={{ flex: 1, height: "1px", background: "var(--border-color)" }} />
-        <span style={{ fontSize: "11px", fontWeight: 700, color: "var(--text-muted)", textTransform: "uppercase", letterSpacing: "0.08em", whiteSpace: "nowrap", display: "flex", alignItems: "center", gap: "7px" }}>
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-            <polyline points="9 22 9 12 15 12 15 22"></polyline>
-          </svg>
-          Supplier Reports
-        </span>
-        <div style={{ flex: 1, height: "1px", background: "var(--border-color)" }} />
-      </div>
+      {/* Supplier Section Divider — hidden: sections are now on separate tabs */}
 
       {/* Supplier KPI Cards */}
-      <section className="dashboard-stats-grid" style={{ marginBottom: "24px" }}>
+      {showSupplierReports && <section className="dashboard-stats-grid" style={{ marginBottom: "24px" }}>
         <StatCard
           title="Total Suppliers"
           value={suppliers.length}
@@ -772,10 +810,10 @@ export default function Reports({
           variant="warning"
           trend={{ direction: totalOutstanding > 0 ? "up" : "down", label: totalOutstanding > 0 ? "Due" : "All cleared" }}
         />
-      </section>
+      </section>}
 
       {/* Supplier Khata Statements Directory */}
-      <div className="dashboard-card customer-export-directory-card" style={{ marginBottom: "24px" }}>
+      {showSupplierReports && <div className="dashboard-card customer-export-directory-card" style={{ marginBottom: "24px" }}>
         <div className="card-header-flex">
           <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
             <h3 className="card-heading">Supplier Khata Statements</h3>
@@ -806,7 +844,7 @@ export default function Reports({
             emptyMessage="No matching supplier accounts found."
           />
         </div>
-      </div>
+      </div>}
 
       {/* Supplier Statement Modal */}
       <SupplierStatementModal

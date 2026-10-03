@@ -60,7 +60,7 @@ export default function Transactions({
 }) {
   // ── state ──
   const [searchQuery, setSearchQuery]   = useState("");
-  const [sourceFilter, setSourceFilter] = useState("all");      // "all" | "customers" | "suppliers"
+  const [sourceFilter, setSourceFilter] = useState("customers"); // "customers" | "suppliers"
   const [typeFilter, setTypeFilter]     = useState(() => initialTypeFilter || "all"); // customer: 'all'|'Udhaar'|'Jama'
   const [methodFilter, setMethodFilter] = useState("all");
 
@@ -395,6 +395,40 @@ export default function Transactions({
   return (
     <div className="page-transactions">
 
+      {/* ── Source Tab Bar ─────────────────────────────────────────────────────── */}
+      <div className="dashboard-tab-bar">
+        <button
+          type="button"
+          className={`dashboard-tab-btn ${sourceFilter === "customers" ? "active" : ""}`}
+          onClick={() => { setSourceFilter("customers"); setTypeFilter("all"); }}
+        >
+          <span className="dashboard-tab-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+            </svg>
+          </span>
+          <span>Customers</span>
+        </button>
+        <button
+          type="button"
+          className={`dashboard-tab-btn ${sourceFilter === "suppliers" ? "active" : ""}`}
+          onClick={() => { setSourceFilter("suppliers"); setTypeFilter("all"); }}
+        >
+          <span className="dashboard-tab-icon">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="1" y="3" width="15" height="13" />
+              <polygon points="16 8 20 8 23 11 23 16 16 16 16 8" />
+              <circle cx="5.5" cy="18.5" r="2.5" />
+              <circle cx="18.5" cy="18.5" r="2.5" />
+            </svg>
+          </span>
+          <span>Suppliers</span>
+        </button>
+      </div>
+
       {/* ── Summary Strip ──────────────────────────────────────────────────── */}
       <div className="transactions-summary-strip">
         <div className="summary-pill">
@@ -485,30 +519,7 @@ export default function Transactions({
         </div>
 
         <div className="toolbar-actions">
-          {/* Source toggle: All / Customers / Suppliers */}
-          <div className="filter-pill-group">
-            <button
-              type="button"
-              className={`filter-pill ${sourceFilter === "all" ? "active" : ""}`}
-              onClick={() => { setSourceFilter("all"); setTypeFilter("all"); }}
-            >
-              All ({transactions.length + supplierTransactions.length})
-            </button>
-            <button
-              type="button"
-              className={`filter-pill ${sourceFilter === "customers" ? "active" : ""}`}
-              onClick={() => { setSourceFilter("customers"); setTypeFilter("all"); }}
-            >
-              Customers ({transactions.length})
-            </button>
-            <button
-              type="button"
-              className={`filter-pill ${sourceFilter === "suppliers" ? "active" : ""}`}
-              onClick={() => { setSourceFilter("suppliers"); setTypeFilter("all"); }}
-            >
-              Suppliers ({supplierTransactions.length})
-            </button>
-          </div>
+          {/* Source toggle removed — now handled by top tab bar */}
 
           {/* Customer type sub-filter — visible only when not supplier-only */}
           {sourceFilter !== "suppliers" && (

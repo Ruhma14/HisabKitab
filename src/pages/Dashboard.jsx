@@ -1,6 +1,27 @@
+import { useState } from "react";
 import StatCard from "../components/StatCard";
 import Table from "../components/Table";
 import Button from "../components/Button";
+
+// ── Tab icons ──────────────────────────────────────────────────────────────────
+const TabIcons = {
+  customers: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+      <circle cx="9" cy="7" r="4" />
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+      <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
+  ),
+  suppliers: (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="1" y="3" width="15" height="13" />
+      <polygon points="16 8 20 8 23 11 23 16 16 16 16 8" />
+      <circle cx="5.5" cy="18.5" r="2.5" />
+      <circle cx="18.5" cy="18.5" r="2.5" />
+    </svg>
+  ),
+};
 
 export default function Dashboard({
   customers = [],
@@ -12,7 +33,9 @@ export default function Dashboard({
   onOpenAddCustomer,
   currency = "Rs.",
 }) {
-  // ── Customer Statistics ──────────────────────────────────────────────────
+  const [activeTab, setActiveTab] = useState("customers");
+
+  // ── Customer Statistics ────────────────────────────────────────────────────
   const totalUdhaar = transactions
     .filter((t) => t.type === "Udhaar")
     .reduce((sum, t) => sum + Number(t.amount || 0), 0);
@@ -32,7 +55,7 @@ export default function Dashboard({
     .sort((a, b) => (b.balance || 0) - (a.balance || 0))
     .slice(0, 4);
 
-  // ── Supplier Statistics ───────────────────────────────────────────────────
+  // ── Supplier Statistics ────────────────────────────────────────────────────
   const totalSuppliers = suppliers.length;
 
   const totalPurchases = suppliers.reduce(
@@ -61,7 +84,11 @@ export default function Dashboard({
     .sort((a, b) => (Number(b.currentBalance) || 0) - (Number(a.currentBalance) || 0))
     .slice(0, 4);
 
-  // ── Customer table columns ────────────────────────────────────────────────
+  // ── Combined totals for overview tab ──────────────────────────────────────
+  const totalNetReceivable = Math.max(0, netBalance);
+  const totalNetPayable = totalOutstandingPayables;
+
+  // ── Customer table columns ─────────────────────────────────────────────────
   const custColumns = [
     {
       header: "Customer",
@@ -252,73 +279,57 @@ export default function Dashboard({
     },
   ];
 
-  return (
-    <div className="page-dashboard">
+  // ── Tab content renderers ──────────────────────────────────────────────────
 
-      {/* ── CUSTOMER SECTION ────────────────────────────────────────────── */}
-
-      {/* Customer Stat Cards */}
+  const renderDashboardTab = () => (
+    <>
+      {/* Combined Overview Stats */}
       <section className="dashboard-stats-grid">
         <StatCard
           title="Total Customers"
           value={customers.length}
-          icon={
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-              <circle cx="9" cy="7" r="4"></circle>
-              <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
-              <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
-            </svg>
-          }
+          icon={TabIcons.customers}
           variant="primary"
-          trend={{ direction: "up", label: "+4 new" }}
+          trend={{ direction: "up", label: "Active accounts" }}
           onClick={() => onNavigate("customers", { statusFilter: "all" })}
         />
-
         <StatCard
-          title="Total Udhaar (Given)"
-          value={`${currency} ${totalUdhaar.toLocaleString()}`}
+          title="Net Receivable"
+          value={`${currency} ${totalNetReceivable.toLocaleString()}`}
           icon={
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="23 18 13.5 8.5 8.5 13.5 1 6"></polyline>
-              <polyline points="17 18 23 18 23 12"></polyline>
-            </svg>
-          }
-          variant="danger"
-          trend={{ direction: "up", label: "Credit" }}
-          onClick={() => onNavigate("transactions", { typeFilter: "Udhaar" })}
-        />
-
-        <StatCard
-          title="Total Jama (Received)"
-          value={`${currency} ${totalJama.toLocaleString()}`}
-          icon={
-            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
-              <polyline points="17 6 23 6 23 12"></polyline>
+              <polyline points="23 18 13.5 8.5 8.5 13.5 1 6" />
+              <polyline points="17 18 23 18 23 12" />
             </svg>
           }
           variant="success"
-          trend={{ direction: "up", label: "Collected" }}
-          onClick={() => onNavigate("transactions", { typeFilter: "Jama" })}
+          trend={{ direction: "up", label: "Customer credit" }}
+          onClick={() => onNavigate("customers", { statusFilter: "pending" })}
         />
-
         <StatCard
-          title="Net Receivable"
-          value={`${currency} ${Math.max(0, netBalance).toLocaleString()}`}
+          title="Total Suppliers"
+          value={totalSuppliers}
+          icon={TabIcons.suppliers}
+          variant="warning"
+          trend={{ direction: "up", label: "Active vendors" }}
+          onClick={() => onNavigate("suppliers")}
+        />
+        <StatCard
+          title="Outstanding Payables"
+          value={`${currency} ${totalNetPayable.toLocaleString()}`}
           icon={
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="2" y="5" width="20" height="14" rx="2"></rect>
-              <line x1="2" y1="10" x2="22" y2="10"></line>
+              <rect x="2" y="5" width="20" height="14" rx="2" />
+              <line x1="2" y1="10" x2="22" y2="10" />
             </svg>
           }
-          variant="warning"
-          trend={{ direction: "up", label: "Recovery" }}
-          onClick={() => onNavigate("customers", { statusFilter: "pending" })}
+          variant="danger"
+          trend={{ direction: totalNetPayable > 0 ? "up" : "down", label: totalNetPayable > 0 ? "Due to suppliers" : "Cleared" }}
+          onClick={() => onNavigate("suppliers")}
         />
       </section>
 
-      {/* Quick Action Bar */}
+      {/* Quick Actions */}
       <section className="dashboard-quick-actions">
         <div className="quick-actions-info">
           <h3>Quick Operations</h3>
@@ -329,8 +340,8 @@ export default function Dashboard({
             size="md"
             icon={
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
               </svg>
             }
             onClick={() => onOpenAddTransaction("Udhaar")}
@@ -342,8 +353,8 @@ export default function Dashboard({
             size="md"
             icon={
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="12" y1="5" x2="12" y2="19"></line>
-                <line x1="5" y1="12" x2="19" y2="12"></line>
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
               </svg>
             }
             onClick={() => onOpenAddTransaction("Jama")}
@@ -355,22 +366,231 @@ export default function Dashboard({
             size="md"
             icon={
               <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
-                <circle cx="8.5" cy="7" r="4"></circle>
-                <line x1="20" y1="8" x2="20" y2="14"></line>
-                <line x1="23" y1="11" x2="17" y2="11"></line>
+                <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                <circle cx="8.5" cy="7" r="4" />
+                <line x1="20" y1="8" x2="20" y2="14" />
+                <line x1="23" y1="11" x2="17" y2="11" />
               </svg>
             }
             onClick={onOpenAddCustomer}
           >
             New Customer
           </Button>
+          <Button
+            variant="outline"
+            size="md"
+            icon={
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="1" y="3" width="15" height="13" />
+                <polygon points="16 8 20 8 23 11 23 16 16 16 16 8" />
+                <circle cx="5.5" cy="18.5" r="2.5" />
+                <circle cx="18.5" cy="18.5" r="2.5" />
+              </svg>
+            }
+            onClick={() => onNavigate("suppliers")}
+          >
+            View Suppliers
+          </Button>
         </div>
       </section>
 
-      {/* Grid: Recent Customer Transactions & Top Debtors */}
+      {/* Two columns: Customer + Supplier recent activity */}
       <div className="dashboard-content-split">
-        {/* Recent Transactions */}
+        {/* Recent Customer Transactions */}
+        <div className="dashboard-card transactions-card">
+          <div className="card-header-flex">
+            <div>
+              <h2 className="card-heading">Recent Customer Transactions</h2>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onNavigate("transactions", { typeFilter: "all" })}
+            >
+              View All →
+            </Button>
+          </div>
+          <div className="dashboard-table-scroll-wrap">
+            <Table
+              columns={custColumns}
+              data={recentTransactions}
+              keyField="id"
+              emptyMessage="No transactions recorded yet."
+            />
+          </div>
+        </div>
+
+        {/* Outstanding Payables Side */}
+        <div className="dashboard-card top-debtors-card">
+          <div className="card-header-flex">
+            <h2 className="card-heading">Pending Recovery</h2>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => onNavigate("customers", { statusFilter: "pending" })}
+            >
+              All →
+            </Button>
+          </div>
+          {topDebtors.length === 0 ? (
+            <div className="empty-debtors">
+              <div className="empty-check-icon">
+                <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                  <polyline points="22 4 12 14.01 9 11.01" />
+                </svg>
+              </div>
+              <p>All accounts are cleared!</p>
+            </div>
+          ) : (
+            <div className="debtors-list">
+              {topDebtors.map((customer) => (
+                <div
+                  key={customer.id}
+                  className="debtor-item"
+                  onClick={() => onNavigate("customer-details", customer.id)}
+                >
+                  <div className="debtor-left">
+                    <div className="avatar-circle">{customer.name.charAt(0)}</div>
+                    <div>
+                      <h4 className="debtor-name">{customer.name}</h4>
+                      <p className="debtor-phone">{customer.phone}</p>
+                    </div>
+                  </div>
+                  <div className="debtor-right">
+                    <span className="debtor-amount">
+                      {currency} {(customer.balance || 0).toLocaleString()}
+                    </span>
+                    <span className="debtor-action-hint">View Ledger →</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </>
+  );
+
+  const renderCustomersTab = () => (
+    <>
+      {/* Customer Stat Cards */}
+      <section className="dashboard-stats-grid">
+        <StatCard
+          title="Total Customers"
+          value={customers.length}
+          icon={
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+              <circle cx="9" cy="7" r="4" />
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87" />
+              <path d="M16 3.13a4 4 0 0 1 0 7.75" />
+            </svg>
+          }
+          variant="primary"
+          trend={{ direction: "up", label: "+4 new" }}
+          onClick={() => onNavigate("customers", { statusFilter: "all" })}
+        />
+        <StatCard
+          title="Total Udhaar (Given)"
+          value={`${currency} ${totalUdhaar.toLocaleString()}`}
+          icon={
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="23 18 13.5 8.5 8.5 13.5 1 6" />
+              <polyline points="17 18 23 18 23 12" />
+            </svg>
+          }
+          variant="danger"
+          trend={{ direction: "up", label: "Credit" }}
+          onClick={() => onNavigate("transactions", { typeFilter: "Udhaar" })}
+        />
+        <StatCard
+          title="Total Jama (Received)"
+          value={`${currency} ${totalJama.toLocaleString()}`}
+          icon={
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
+              <polyline points="17 6 23 6 23 12" />
+            </svg>
+          }
+          variant="success"
+          trend={{ direction: "up", label: "Collected" }}
+          onClick={() => onNavigate("transactions", { typeFilter: "Jama" })}
+        />
+        <StatCard
+          title="Net Receivable"
+          value={`${currency} ${Math.max(0, netBalance).toLocaleString()}`}
+          icon={
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="2" y="5" width="20" height="14" rx="2" />
+              <line x1="2" y1="10" x2="22" y2="10" />
+            </svg>
+          }
+          variant="warning"
+          trend={{ direction: "up", label: "Recovery" }}
+          onClick={() => onNavigate("customers", { statusFilter: "pending" })}
+        />
+      </section>
+
+      {/* Customer Quick Actions */}
+      <section className="dashboard-quick-actions">
+        <div className="quick-actions-info">
+          <h3>Customer Operations</h3>
+        </div>
+        <div className="quick-actions-btns">
+          <Button
+            variant="danger"
+            size="md"
+            icon={
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            }
+            onClick={() => onOpenAddTransaction("Udhaar")}
+          >
+            Give Udhaar
+          </Button>
+          <Button
+            variant="success"
+            size="md"
+            icon={
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            }
+            onClick={() => onOpenAddTransaction("Jama")}
+          >
+            Receive Jama
+          </Button>
+          <Button
+            variant="outline"
+            size="md"
+            icon={
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" />
+                <circle cx="8.5" cy="7" r="4" />
+                <line x1="20" y1="8" x2="20" y2="14" />
+                <line x1="23" y1="11" x2="17" y2="11" />
+              </svg>
+            }
+            onClick={onOpenAddCustomer}
+          >
+            New Customer
+          </Button>
+          <Button
+            variant="ghost"
+            size="md"
+            onClick={() => onNavigate("customers", { statusFilter: "all" })}
+          >
+            All Customers →
+          </Button>
+        </div>
+      </section>
+
+      {/* Grid: Recent Transactions & Pending Recovery */}
+      <div className="dashboard-content-split">
         <div className="dashboard-card transactions-card">
           <div className="card-header-flex">
             <div>
@@ -384,7 +604,6 @@ export default function Dashboard({
               View All →
             </Button>
           </div>
-
           <div className="dashboard-table-scroll-wrap">
             <Table
               columns={custColumns}
@@ -395,7 +614,6 @@ export default function Dashboard({
           </div>
         </div>
 
-        {/* Top Debtors Side Card */}
         <div className="dashboard-card top-debtors-card">
           <div className="card-header-flex">
             <div>
@@ -414,8 +632,8 @@ export default function Dashboard({
             <div className="empty-debtors">
               <div className="empty-check-icon">
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                  <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                  <polyline points="22 4 12 14.01 9 11.01" />
                 </svg>
               </div>
               <p>All accounts are cleared!</p>
@@ -449,105 +667,60 @@ export default function Dashboard({
           )}
         </div>
       </div>
+    </>
+  );
 
-      {/* ── SUPPLIER SECTION ─────────────────────────────────────────────── */}
-
-      {/* Supplier Section Divider */}
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          gap: "14px",
-          margin: "8px 0 20px 0",
-        }}
-      >
-        <div
-          style={{
-            flex: 1,
-            height: "1px",
-            background: "var(--border-color)",
-          }}
-        />
-        <span
-          style={{
-            fontSize: "11px",
-            fontWeight: "700",
-            color: "var(--text-muted)",
-            textTransform: "uppercase",
-            letterSpacing: "0.08em",
-            whiteSpace: "nowrap",
-            display: "flex",
-            alignItems: "center",
-            gap: "7px",
-          }}
-        >
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-            <polyline points="9 22 9 12 15 12 15 22"></polyline>
-          </svg>
-          Supplier Overview
-        </span>
-        <div
-          style={{
-            flex: 1,
-            height: "1px",
-            background: "var(--border-color)",
-          }}
-        />
-      </div>
-
+  const renderSuppliersTab = () => (
+    <>
       {/* Supplier Stat Cards */}
-      <section className="dashboard-stats-grid" style={{ marginBottom: "24px" }}>
+      <section className="dashboard-stats-grid">
         <StatCard
           title="Total Suppliers"
           value={totalSuppliers}
           icon={
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path>
-              <polyline points="9 22 9 12 15 12 15 22"></polyline>
+              <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+              <polyline points="9 22 9 12 15 12 15 22" />
             </svg>
           }
           variant="primary"
           trend={{ direction: "up", label: "Active vendors" }}
           onClick={() => onNavigate("suppliers")}
         />
-
         <StatCard
           title="Total Purchases"
           value={`${currency} ${totalPurchases.toLocaleString()}`}
           icon={
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="9" cy="21" r="1"></circle>
-              <circle cx="20" cy="21" r="1"></circle>
-              <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+              <circle cx="9" cy="21" r="1" />
+              <circle cx="20" cy="21" r="1" />
+              <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6" />
             </svg>
           }
           variant="danger"
           trend={{ direction: "up", label: "All purchases" }}
           onClick={() => onNavigate("suppliers")}
         />
-
         <StatCard
           title="Total Paid to Suppliers"
           value={`${currency} ${totalPaidToSuppliers.toLocaleString()}`}
           icon={
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
-              <polyline points="17 6 23 6 23 12"></polyline>
+              <polyline points="23 6 13.5 15.5 8.5 10.5 1 18" />
+              <polyline points="17 6 23 6 23 12" />
             </svg>
           }
           variant="success"
           trend={{ direction: "up", label: "Payments made" }}
           onClick={() => onNavigate("suppliers")}
         />
-
         <StatCard
           title="Outstanding Payables"
           value={`${currency} ${totalOutstandingPayables.toLocaleString()}`}
           icon={
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <rect x="2" y="5" width="20" height="14" rx="2"></rect>
-              <line x1="2" y1="10" x2="22" y2="10"></line>
+              <rect x="2" y="5" width="20" height="14" rx="2" />
+              <line x1="2" y1="10" x2="22" y2="10" />
             </svg>
           }
           variant="warning"
@@ -559,9 +732,37 @@ export default function Dashboard({
         />
       </section>
 
+      {/* Supplier Quick Actions */}
+      <section className="dashboard-quick-actions">
+        <div className="quick-actions-info">
+          <h3>Supplier Operations</h3>
+        </div>
+        <div className="quick-actions-btns">
+          <Button
+            variant="primary"
+            size="md"
+            icon={
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" />
+                <line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+            }
+            onClick={() => onNavigate("suppliers")}
+          >
+            Add Supplier
+          </Button>
+          <Button
+            variant="outline"
+            size="md"
+            onClick={() => onNavigate("suppliers")}
+          >
+            All Suppliers →
+          </Button>
+        </div>
+      </section>
+
       {/* Grid: Supplier Activity & Outstanding Payables */}
       <div className="dashboard-content-split">
-        {/* Supplier Activity */}
         <div className="dashboard-card transactions-card">
           <div className="card-header-flex">
             <div>
@@ -578,7 +779,6 @@ export default function Dashboard({
               View All →
             </Button>
           </div>
-
           <div className="dashboard-table-scroll-wrap">
             <Table
               columns={supplierColumns}
@@ -590,7 +790,6 @@ export default function Dashboard({
           </div>
         </div>
 
-        {/* Outstanding Payables Side Card */}
         <div className="dashboard-card top-debtors-card">
           <div className="card-header-flex">
             <div>
@@ -609,8 +808,8 @@ export default function Dashboard({
             <div className="empty-debtors">
               <div className="empty-check-icon">
                 <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                  <polyline points="22 4 12 14.01 9 11.01"></polyline>
+                  <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14" />
+                  <polyline points="22 4 12 14.01 9 11.01" />
                 </svg>
               </div>
               <p>All supplier accounts are cleared!</p>
@@ -644,7 +843,34 @@ export default function Dashboard({
           )}
         </div>
       </div>
+    </>
+  );
 
+  return (
+    <div className="page-dashboard">
+      {/* ── Tab Bar ─────────────────────────────────────────────────────────── */}
+      <div className="dashboard-tab-bar">
+        {[
+          { id: "customers", label: "Customers" },
+          { id: "suppliers", label: "Suppliers" },
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            type="button"
+            className={`dashboard-tab-btn ${activeTab === tab.id ? "active" : ""}`}
+            onClick={() => setActiveTab(tab.id)}
+          >
+            <span className="dashboard-tab-icon">{TabIcons[tab.id]}</span>
+            <span>{tab.label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* ── Tab Content ─────────────────────────────────────────────────────── */}
+      <div className="dashboard-tab-content">
+        {activeTab === "customers" && renderCustomersTab()}
+        {activeTab === "suppliers" && renderSuppliersTab()}
+      </div>
     </div>
   );
 }

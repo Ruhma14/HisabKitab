@@ -1326,6 +1326,69 @@ button, input, select, textarea {
 }
 
 /* ==========================================================================
+   DASHBOARD / REPORTS TAB BAR (DigiKhata-style)
+   ========================================================================== */
+
+.dashboard-tab-bar {
+  display: flex;
+  gap: 4px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 5px;
+  margin-bottom: 24px;
+  width: fit-content;
+  box-shadow: var(--shadow-sm);
+}
+
+.dashboard-tab-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px;
+  border: none;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.dashboard-tab-btn:hover {
+  background: var(--border-light);
+  color: var(--text-main);
+}
+
+.dashboard-tab-btn.active {
+  background: var(--primary);
+  color: #ffffff;
+  font-weight: 600;
+  box-shadow: 0 2px 8px rgba(37, 99, 235, 0.3);
+}
+
+.dashboard-tab-btn.active .dashboard-tab-icon svg {
+  stroke: #ffffff;
+}
+
+.dashboard-tab-icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.dashboard-tab-content {
+  animation: tabFadeIn 0.2s ease;
+}
+
+@keyframes tabFadeIn {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ==========================================================================
    TRANSACTIONS PAGE SUMMARY STRIP
    ========================================================================== */
 .transactions-summary-strip {

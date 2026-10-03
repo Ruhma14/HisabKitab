@@ -3,6 +3,7 @@ import { toast } from "sonner";
 import Button from "../components/Button";
 import { updateOwnerPassword } from "../services/authService";
 import { getOwnerInitials, PRESET_PALETTES } from "../utils/avatarUtils";
+import { getEmailConfig, saveEmailConfig, sendTransactionEmail } from "../services/emailService";
 
 export default function Settings({
   shopInfo,
@@ -30,6 +31,11 @@ export default function Settings({
 
   const [activeTab, setActiveTab] = useState("profile"); // 'profile' | 'store' | 'notifications' | 'security'
   const [selectedAvatarPreset, setSelectedAvatarPreset] = useState("");
+
+  // EmailJS Configuration State
+  const [emailConfig, setEmailConfig] = useState(() => getEmailConfig());
+  const [isTestingEmail, setIsTestingEmail] = useState(false);
+  const [testEmailAddress, setTestEmailAddress] = useState("");
 
   // Security Credentials Update State
   const [currentPin, setCurrentPin] = useState("");
@@ -580,6 +586,153 @@ export default function Settings({
                       <span className="switch-slider"></span>
                     </label>
                   </div>
+                </div>
+
+                {/* Email Notification Configuration (Alam Garments) */}
+                <div style={{ marginTop: "32px", borderTop: "1px solid var(--border-color)", paddingTop: "24px" }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "12px" }}>
+                    <div>
+                      <h4 style={{ fontSize: "16px", fontWeight: "700", color: "var(--text-main)", margin: "0 0 4px 0" }}>
+                        Automatic Transaction Email Notifications (EmailJS)
+                      </h4>
+                      <p style={{ fontSize: "13px", color: "var(--text-muted)", margin: 0 }}>
+                        Emails are branded <strong>Alam Garments</strong> and sent to customer/supplier registered email addresses on every transaction.
+                      </p>
+                    </div>
+                    <span style={{
+                      padding: "4px 10px",
+                      borderRadius: "6px",
+                      fontSize: "12px",
+                      fontWeight: "600",
+                      background: emailConfig.serviceId && emailConfig.templateId && emailConfig.publicKey ? "#dcfce7" : "#fef3c7",
+                      color: emailConfig.serviceId && emailConfig.templateId && emailConfig.publicKey ? "#16a34a" : "#d97706",
+                    }}>
+                      {emailConfig.serviceId && emailConfig.templateId && emailConfig.publicKey ? "Configured & Active" : "Setup Required (Free)"}
+                    </span>
+                  </div>
+
+                  <div style={{
+                    background: "var(--bg-main, #f8fafc)",
+                    border: "1px solid var(--border-color, #e2e8f0)",
+                    borderRadius: "10px",
+                    padding: "18px",
+                    marginBottom: "16px"
+                  }}>
+                    <div className="form-row-2">
+                      <div className="form-group">
+                        <label className="form-label" htmlFor="emailjs-service-id">
+                          EmailJS Service ID
+                        </label>
+                        <input
+                          id="emailjs-service-id"
+                          type="text"
+                          className="form-input"
+                          placeholder="e.g. service_xxxxxxx"
+                          value={emailConfig.serviceId}
+                          onChange={(e) => setEmailConfig(prev => ({ ...prev, serviceId: e.target.value.trim() }))}
+                        />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label" htmlFor="emailjs-template-id">
+                          EmailJS Template ID
+                        </label>
+                        <input
+                          id="emailjs-template-id"
+                          type="text"
+                          className="form-input"
+                          placeholder="e.g. template_xxxxxxx"
+                          value={emailConfig.templateId}
+                          onChange={(e) => setEmailConfig(prev => ({ ...prev, templateId: e.target.value.trim() }))}
+                        />
+                      </div>
+                    </div>
+
+                    <div className="form-group" style={{ marginBottom: "16px" }}>
+                      <label className="form-label" htmlFor="emailjs-public-key">
+                        EmailJS Public Key (User ID)
+                      </label>
+                      <input
+                        id="emailjs-public-key"
+                        type="text"
+                        className="form-input"
+                        placeholder="e.g. xxxxxxxxxxxxxxxxx"
+                        value={emailConfig.publicKey}
+                        onChange={(e) => setEmailConfig(prev => ({ ...prev, publicKey: e.target.value.trim() }))}
+                      />
+                    </div>
+
+                    <div style={{ display: "flex", gap: "10px", alignItems: "center", flexWrap: "wrap" }}>
+                      <Button
+                        type="button"
+                        variant="primary"
+                        onClick={() => {
+                          saveEmailConfig(emailConfig);
+                          toast.success("Email Settings Saved!", {
+                            description: "EmailJS credentials saved to application storage.",
+                          });
+                        }}
+                      >
+                        Save Email Settings
+                      </Button>
+
+                      <div style={{ display: "flex", gap: "8px", alignItems: "center", marginLeft: "auto" }}>
+                        <input
+                          type="email"
+                          className="form-input"
+                          placeholder="Send test to: name@gmail.com"
+                          style={{ width: "240px", padding: "7px 12px", fontSize: "13px" }}
+                          value={testEmailAddress}
+                          onChange={(e) => setTestEmailAddress(e.target.value)}
+                        />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          disabled={isTestingEmail}
+                          onClick={async () => {
+                            if (!testEmailAddress.trim()) {
+                              toast.error("Please enter an email address to send a test notification.");
+                              return;
+                            }
+                            setIsTestingEmail(true);
+                            saveEmailConfig(emailConfig);
+                            const res = await sendTransactionEmail({
+                              toEmail: testEmailAddress,
+                              toName: "Valued Partner",
+                              recipientType: "Customer",
+                              transactionType: "Udhaar",
+                              amount: 4500,
+                              date: new Date().toISOString().split("T")[0],
+                              description: "Test Notification: Cotton Fabrics Suit",
+                              updatedBalance: 12500,
+                              currency: formData.currency || "Rs.",
+                              billNumber: "TEST-001",
+                              shopInfo: {
+                                name: formData.name || "Alam Garments",
+                                phone: formData.phone || "0300-1234567",
+                                email: formData.email || "alam.garments@gmail.com",
+                              },
+                            });
+                            setIsTestingEmail(false);
+                            if (res.success) {
+                              toast.success("Test Email Sent Successfully!", {
+                                description: `Sent to ${testEmailAddress} with Alam Garments branding.`,
+                              });
+                            } else {
+                              toast.error("Test Email Failed", {
+                                description: res.message,
+                              });
+                            }
+                          }}
+                        >
+                          {isTestingEmail ? "Sending..." : "Send Test Email"}
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+
+                  <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: "8px 0 0 0" }}>
+                    💡 <strong>Tip:</strong> EmailJS provides a 100% free tier (200 emails/month). Create a free account at <a href="https://www.emailjs.com" target="_blank" rel="noreferrer" style={{ color: "var(--primary-color)", textDecoration: "underline" }}>emailjs.com</a> and enter your keys above, or set them via <code>.env</code> file.
+                  </p>
                 </div>
               </div>
             )}

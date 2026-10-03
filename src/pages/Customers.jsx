@@ -24,6 +24,7 @@ export default function Customers({
       const matchesSearch =
         customer.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
         customer.phone.includes(searchQuery) ||
+        (customer.email && customer.email.toLowerCase().includes(searchQuery.toLowerCase())) ||
         (customer.address &&
           customer.address.toLowerCase().includes(searchQuery.toLowerCase()));
 
@@ -47,7 +48,9 @@ export default function Customers({
           <div className="avatar-circle">{customer.name.charAt(0)}</div>
           <div>
             <span className="customer-name-bold">{customer.name}</span>
-            <span className="customer-meta-sub">{customer.address}</span>
+            <span className="customer-meta-sub">
+              {customer.email ? `${customer.email} • ` : ""}{customer.address}
+            </span>
           </div>
         </div>
       ),
